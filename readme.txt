@@ -113,6 +113,9 @@ This means that when a new image is uploaded to Instagram, it will not appear on
 
 == Changelog ==
 
+= 1.2 =
+A few graphical edits.
+
 = 1.1 =
 Fix a few cache related bugs.
 Add the “caption_hashtags” attribute to the shortcode.
