@@ -3,7 +3,7 @@
 Plugin Name: Easy Instagram
 Plugin URI: 
 Description: Display one or more Instagram images by user id or tag
-Version: 1.0
+Version: 1.1
 Author: Velomedia
 Author URI: http://www.velomedia.com
 Licence: 
@@ -23,6 +23,8 @@ add_action( 'easy_instagram_clear_cache_event', array( 'Easy_Instagram', 'clear_
 add_shortcode( 'easy-instagram', array( 'Easy_Instagram', 'shortcode' ) );
 
 //=============================================================================
+
+define( 'EASY_INSTAGRAM_PLUGIN_PATH', dirname( __FILE__ ) );
 
 class Easy_Instagram {
 	static $cache_dir = 'cache/';
@@ -343,7 +345,7 @@ class Easy_Instagram {
 
 	static function get_live_user_data( $instagram, $user_id, $limit = 1 ) {
 		if ( $limit > self::$max_images ) {
-			$limit = $max_images;
+			$limit = self::$max_images;
 		}
 
 		$live_data = $instagram->getUserRecent( $user_id );
@@ -355,26 +357,27 @@ class Easy_Instagram {
 		else {
 			$live_data = array_slice( $recent->data, 0, $limit );
 		}
+
 		return $live_data;
 	}
 
 	//=========================================================================
 
 	static function get_live_tag_data( $instagram, $tag, $limit = 1 ) {
-
 		if ( $limit > self::$max_images ) {
-			$limit = $max_images;
+			$limit = self::$max_images;
 		}
 
 		$live_data = $instagram->getRecentTags( $tag );
 
 		$recent = json_decode( $live_data );
-		if ( empty( $recent ) ) {
+		if ( empty( $recent ) || !isset( $recent->data ) ) {
 			$live_data = NULL;
 		}				
 		else {
 			$live_data = array_slice( $recent->data, 0, $limit );
 		}
+
 		return $live_data;
 	}
 
@@ -384,20 +387,22 @@ class Easy_Instagram {
 		extract(
 			shortcode_atts( 
 				array(
-					'tag' 		=> '',
-					'user_id' 	=> '',
-					'limit'     => 1
+					'tag' 				=> '',
+					'user_id' 			=> '',
+					'limit'     		=> 1,
+					'caption_hashtags' 	=> 'true'
 				), 
 				$attributes
 			) 
 		);
-
-		return self::generate_content( $tag, $user_id, $limit );
+		
+		$caption_hashtags = strtolower( $caption_hashtags );
+		return self::generate_content( $tag, $user_id, $limit, $caption_hashtags );
 	}
 
 	//=========================================================================
 	
-	static function generate_content( $tag, $user_id, $limit ) {
+	static function generate_content( $tag, $user_id, $limit, $caption_hashtags ) {
 		if ( empty( $tag ) && empty( $user_id ) ) {
 			return '';
 		}
@@ -413,13 +418,12 @@ class Easy_Instagram {
 		$instagram = new Instagram( $config );
 		$instagram->setAccessToken( $access_token );
 
-
-		if ( !empty( $user_id ) ) {
+		if ( ! empty( $user_id ) ) {
 			list( $data, $expired ) = self::get_cached_data_for_id_or_tag( $user_id, $limit, 'id' );
 			
 			if ( $expired ) {
 				$live_data = self::get_live_user_data( $instagram, $user_id, $limit );
-				if ( !empty( $live_data ) ) {
+				if ( ! empty( $live_data ) ) {
 					self::clear_cache( $user_id, 'id' );
 				}
 				else {
@@ -433,13 +437,13 @@ class Easy_Instagram {
 			$cache_index = 'id' . $user_id;			
 		}
 		else {
-			if ( !empty( $tag ) ) {
+			if ( ! empty( $tag ) ) {
 				list( $data, $expired ) = self::get_cached_data_for_id_or_tag( $tag, $limit, 'tag' );
 
 				if ( $expired ) {
 					$live_data = self::get_live_tag_data( $instagram, $tag, $limit );
-					if ( !empty( $live_data ) ) {
-						self::clear_cache( $user_id, 'tag' );
+					if ( ! empty( $live_data ) ) {
+						self::clear_cache( $tag, 'tag' );
 					}
 					else {
 						$live_data = NULL;
@@ -461,9 +465,32 @@ class Easy_Instagram {
 
 			foreach ( $live_data as $elem ) {
 				if ( isset( $elem->caption ) ) {
-					$caption_text = isset( $elem->caption->text ) ? $elem->caption->text : '';
-					$caption_from = ( isset( $elem->caption->from ) && isset( $elem->caption->from->full_name ) ) 
-						? $elem->caption->from->full_name : '';
+					$caption_text = isset( $elem->caption->text ) ? trim( $elem->caption->text ) : '';
+
+					$caption_from = '';
+					
+					if ( isset( $elem->caption->from ) ) {
+						if ( isset( $elem->caption->from->full_name ) ) {
+							$caption_from = $elem->caption->from->full_name;
+						}
+
+						if ( empty( $caption_from ) && isset( $elem->caption->from->username ) ) {
+							$caption_from = $elem->caption->from->username;
+						}
+					}
+
+					if ( empty( $caption_from ) ) {
+						if ( isset( $elem->user ) ) {
+							if ( isset( $elem->user->full_name ) ) {
+								$caption_from = $elem->user->full_name;
+							}
+
+							if ( empty( $caption_from ) && isset( $elem->user->username ) ) {
+								$caption_from = $elem->user->username;
+							}
+						}
+ 					}
+
 					$caption_created_time = isset( $elem->caption->created_time ) ? $elem->caption->created_time : time();
 				}
 				else {
@@ -471,7 +498,6 @@ class Easy_Instagram {
 					$caption_from = '';
 					$caption_created_time = time();
 				}
-				
 				
 				$cached_elem = array(
 					'link' 					=> isset( $elem->link ) ? $elem->link : '#',
@@ -564,7 +590,14 @@ class Easy_Instagram {
 					. $width. 'px; height: ' . $height . 'px;" class="easy-instagram-thumbnail" />';
 
 				$out .= '<div class="easy-instagram-thumbnail-author">by ' . $elem['caption_from'] . '</div>';
-				$out .= '<div class="easy-instagram-thumbnail-caption">' . $elem['caption_text'] . '</div>';
+
+				$caption_text = $elem['caption_text'] ;
+				if ( 'false' == $caption_hashtags ) {
+					$caption_text = preg_replace( '/#[^\\s]+/', '', $caption_text );
+					$caption_text = trim( $caption_text );
+				}				
+
+				$out .= '<div class="easy-instagram-thumbnail-caption">' . $caption_text . '</div>';
 
 				$elem_time = ( $elem['caption_created_time'] > $elem['created_time'] )
 							? $elem['caption_created_time'] : $elem['created_time'];
@@ -587,7 +620,7 @@ class Easy_Instagram {
 	//=========================================================================
 
 	static public function get_cache_dir() {
-		return plugin_dir_path( __FILE__ ) . Easy_Instagram::$cache_dir;
+		return EASY_INSTAGRAM_PLUGIN_PATH . '/' . self::$cache_dir;
 	}
 
 	//=========================================================================
@@ -641,24 +674,28 @@ class Easy_Instagram {
 		}
 
 		if ( !empty( $data ) ) {
-			$data = unserialize( $data );
+			$cached_data = unserialize( $data );
 		}
 
 		fclose( $handle );
 
+		if ( !isset( $cached_data ) || !isset( $cached_data['data'] ) || !isset( $cached_data['cache_timestamp'] ) ) {
+			return array( NULL, FALSE ); //No cached data found
+		}
+
 		// If limit is greater than the cached data size, force clear cache
-		if ( $limit > count( $data['data'] ) ) {
-			return array( $data, TRUE );
+		if ( $limit > count( $cached_data['data'] ) ) {
+			return array( $cached_data, TRUE );
 		}
 
 		$cache_minutes = self::get_cache_refresh_minutes();
 
-		$delta = ( $now - $data['cache_timestamp'] ) / 60;
+		$delta = ( $now - $cached_data['cache_timestamp'] ) / 60;
 		if ( $delta > $cache_minutes ) {
-			return array( $data, TRUE );
+			return array( $cached_data, TRUE );
 		}
 		else {
-			return array( $data, FALSE );
+			return array( $cached_data, FALSE );
 		}
 	}
 
@@ -667,7 +704,10 @@ class Easy_Instagram {
 	static function clear_cache( $id_or_tag, $type ) {
 		$hash = md5( $type . $id_or_tag );
 
-		$path = self::get_cache_dir() . $hash . '.cache';
+		$cache_dir = self::get_cache_dir();
+
+		$path = $cache_dir . $hash . '.cache';
+
 		if ( file_exists( $path ) ) {
 			$handle = fopen( $path, 'r' );
 
@@ -676,26 +716,26 @@ class Easy_Instagram {
 			}
 
 			if ( !empty( $data ) ) {
-				$data = unserialize( $data );
+				$cached_data = unserialize( $data );
 			}
 
 			fclose( $handle );
 
 			unlink( $path );	
 	
-			if ( !empty( $data ) ) {
-				foreach ( $data as $elem ) {
+			$file_types = array( 'thumbnail', 'low_resolution', 'standard_resolution' );
+			if ( isset( $cached_data ) && isset( $cached_data['data'] ) ) {
+				foreach ( $cached_data['data'] as $elem ) {
 					//Delete images
-					if ( isset( $elem['thumbnail']['url'] ) && file_exists( $elem['thumbnail']['url'] ) ) {
-						unlink( $elem['thumbnail']['url'] );
-					}
+					foreach ( $file_types as $file_type ) {
+						if ( isset( $elem[$file_type] ) && isset( $elem[$file_type]['url'] ) ) {
+							// Extract the file name from the file URL and look for the file in the cache directory
+							$file_path = $cache_dir . basename( $elem[$file_type]['url'] );
 
-					if ( isset( $elem['standard_resolution']['url'] ) && file_exists( $elem['standard_resolution']['url'] ) ) {
-						unlink( $elem['standard_resolution']['url'] );
-					}
-
-					if ( isset( $elem['low_resolution']['url'] ) && file_exists( $elem['low_resolution']['url'] ) ) {
-						unlink( $elem['low_resolution']['url'] );
+							if ( file_exists( $file_path ) ) {
+								unlink( $file_path );
+							}
+						}
 					}
 				}
 			}
@@ -716,7 +756,13 @@ class Easy_Instagram {
 		$path = self::get_cache_dir() . $filename;
 
 		$content = file_get_contents( $remote_image_url );
-		file_put_contents( $path, $content );
+		if ( FALSE == $content ) {
+			return NULL;
+		}
+		
+		if ( FALSE == file_put_contents( $path, $content ) ) {
+			return NULL;
+		}
 
 		return plugins_url( self::$cache_dir . $filename, __FILE__ );
 	}
@@ -766,7 +812,7 @@ class Easy_Instagram {
 	static function plugin_activation() {
 		wp_schedule_event( 
 			current_time( 'timestamp' ), 
-			'daily', 
+			'daily',
 			'easy_instagram_clear_cache_event' 
 		);	
 	}
@@ -776,8 +822,10 @@ class Easy_Instagram {
 	static function clear_expired_cache_action() {
 		$valid_files = array();
 		$cache_dir = self::get_cache_dir();
+
 		$files = scandir( $cache_dir );
-		if ( !empty( $files ) ) {
+
+		if ( ! empty( $files ) ) {
 			foreach ( $files as $file ) {
 				if ( preg_match( '/\.cache$/', $file ) ) {
 					$ret = self::remove_cache_file( $file );
@@ -786,28 +834,26 @@ class Easy_Instagram {
 					}
 				}
 			}
-		}
 
-		if ( ! empty( $valid_files ) ) {
-			// Remove all the files from the cache folder not in the valid files array
-			$files = scandir( $cache_dir );
-			if ( !empty( $files ) ) {
-				foreach ( $files as $file ) {
-					if ( ( '.' != $file ) && ( '..' != $file ) ) {
-						if ( ! in_array( $file, $valid_files ) ) {
-							unlink( $cache_dir . '/' . $file );
+			// Remove all the files from the cache folder not in the valid files array (or valid files is empty)
+			foreach ( $files as $file ) {
+				if ( ( '.' != $file ) && ( '..' != $file ) ) {
+					if ( ! in_array( $file, $valid_files ) ) {
+						$file_path = $cache_dir . '/' . $file;
+						if ( file_exists( $file_path ) ) {
+							unlink( $file_path );
 						}
 					}
 				}
 			}
 		}
-
 	}
 
 	//=====================================================================
 
 	static function remove_cache_file( $filename ) {
-		$path = self::get_cache_dir() . $filename;
+		$cache_dir = self::get_cache_dir() ;
+		$path = $cache_dir . $filename;
 		
 		$handle = fopen( $path, 'r' );
 
@@ -816,29 +862,33 @@ class Easy_Instagram {
 		}
 
 		if ( !empty( $data ) ) {
-			$data = unserialize( $data );
+			$cached_data = unserialize( $data );
 		}
 
 		fclose( $handle );
 
 		$now = time();
-		$delta = ( $now - $data['cache_timestamp'] ) / 60;
+		$delta = ( $now - $cached_data['cache_timestamp'] ) / 60;
 
+		$file_types = array( 'thumbnail', 'low_resolution', 'standard_resolution' );
 		$valid_files = array();
-		if ( $delta > 24 * 60 ) {
-			if ( !empty( $data['data'] ) ) {
-				foreach ( $data['data'] as $elem ) {
-					//Delete images
-					if ( isset( $elem['thumbnail']['url'] ) && file_exists( $elem['thumbnail']['url'] ) ) {
-						unlink( $elem['thumbnail']['url'] );
-					}
 
-					if ( isset( $elem['standard_resolution']['url'] ) && file_exists( $elem['standard_resolution']['url'] ) ) {
-						unlink( $elem['standard_resolution']['url'] );
-					}
+		if ( ! isset( $cached_data ) ) {
+			return $valid_files;
+		}
 
-					if ( isset( $elem['low_resolution']['url'] ) && file_exists( $elem['low_resolution']['url'] ) ) {
-						unlink( $elem['low_resolution']['url'] );
+		if ( $delta > 24 * 60 )	{
+			if ( !empty( $cached_data['data'] ) ) {
+				foreach ( $cached_data['data'] as $elem ) {
+					//Delete images					
+					foreach ( $file_types as $file_type ) {
+						if ( isset( $elem[$file_type] ) && isset( $elem[$file_type]['url'] ) ) {
+							// Extract the file name from the file URL and look for the file in the cache directory
+							$file_path = $cache_dir . basename( $elem[$file_type]['url'] );
+							if ( file_exists( $file_path ) ) {
+								unlink( $file_path );
+							}
+						}
 					}
 				}
 			}
@@ -846,23 +896,21 @@ class Easy_Instagram {
 			unlink( $path );
 		}
 		else {
-			if ( !empty( $data['data'] ) ) {
-				foreach ( $data['data'] as $elem ) {
-					if ( isset( $elem['thumbnail']['url'] ) && file_exists( $elem['thumbnail']['url'] ) ) {
-						$valid_files[] = $elem['thumbnail']['url'];
+			if ( ! empty( $cached_data['data'] ) ) {
+				foreach ( $cached_data['data'] as $elem ) {
+					foreach ( $file_types as $file_type ) {
+						if ( isset( $elem[$file_type]['url'] ) ) {
+							$filename = basename( $elem[$file_type]['url'] );
+							$file_path = $cache_dir . $filename;
+							if ( file_exists( $file_path ) ) {
+								$valid_files[] = $filename;
+							}
+						}
 					}
-
-					if ( isset( $elem['standard_resolution']['url'] ) && file_exists( $elem['standard_resolution']['url'] ) ) {
-						$valid_files[] = $elem['standard_resolution']['url'];	
-					}
-
-					if ( isset( $elem['low_resolution']['url'] ) && file_exists( $elem['low_resolution']['url'] ) ) {
-						$valid_files[] = $elem['low_resolution']['url'];
-					}					
 				}
 				$valid_files[] = $path;
 			}
-
+			$valid_files[] = $filename; //Keep the cache file as valid
 		}
 		
 		return $valid_files;
@@ -919,6 +967,14 @@ class Easy_Instagram_Widget extends WP_Widget {
 		if ( $limit > Easy_Instagram::$max_images ) {
 			$limit = Easy_Instagram::$max_images;
 		}
+
+
+		if ( isset( $instance['caption_hashtags'] ) ) {
+			$caption_hashtags = $instance['caption_hashtags'];
+		}
+		else {
+			$caption_hashtags = 'true';
+		}		
 ?>
 		<p>
 		<label for="<?php echo $this->get_field_id( 'type' ); ?>"><?php _e( 'Type:' ); ?></label> 
@@ -952,6 +1008,16 @@ class Easy_Instagram_Widget extends WP_Widget {
 		</select>
 		</p>
 
+		<p>
+		<label for="<?php echo $this->get_field_id( 'caption_hashtags' ); ?>"><?php _e( 'Show Caption Hashtags:' ); ?></label> 
+		<select class="widefat" id="<?php echo $this->get_field_id( 'caption_hashtags' ); ?>" name="<?php echo $this->get_field_name( 'caption_hashtags' ); ?>">
+			<?php $selected = ( 'true' == $caption_hashtags ) ? 'selected="selected"' : ''; ?>
+			<option value="true" <?php echo $selected;?>><?php _e( 'Yes' ); ?></option>
+			
+			<?php $selected = ( 'false' == $caption_hashtags ) ? 'selected="selected"' : ''; ?>
+			<option value="false" <?php echo $selected;?>><?php _e( 'No' ); ?></option>
+		</select>
+		</p>
 <?php
 		
 	}
@@ -960,9 +1026,10 @@ class Easy_Instagram_Widget extends WP_Widget {
 
 	public function update( $new_instance, $old_instance ) {
 		$instance = array();
-		$instance['type']	= strip_tags( $new_instance['type'] );
-		$instance['value']	= trim( strip_tags( $new_instance['value'] ) );
-		$instance['limit']	= strip_tags( $new_instance['limit'] );		
+		$instance['type']				= strip_tags( $new_instance['type'] );
+		$instance['value']				= trim( strip_tags( $new_instance['value'] ) );
+		$instance['limit']				= strip_tags( $new_instance['limit'] );		
+		$instance['caption_hashtags'] 	= $new_instance['caption_hashtags'];
 
 		return $instance;
 	}
@@ -977,6 +1044,7 @@ class Easy_Instagram_Widget extends WP_Widget {
 		$tag = '';
 		$user_id = '';
 		$limit = 1;
+		$caption_hashtags = 'true';
 		
 		if ( 'tag' == $instance['type'] ) {
 			$tag = trim( $instance['value'] );
@@ -994,7 +1062,11 @@ class Easy_Instagram_Widget extends WP_Widget {
 			}
 		}
 		
-		$content = Easy_Instagram::generate_content( $tag, $user_id, $limit );
+		if ( isset( $instance['caption_hashtags'] ) ) {
+			$caption_hashtags = $instance['caption_hashtags'];
+		}
+
+		$content = Easy_Instagram::generate_content( $tag, $user_id, $limit, $caption_hashtags );
 		
 		echo $content;
 		
