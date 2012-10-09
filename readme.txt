@@ -3,7 +3,7 @@ Contributors: VeloMedia
 Tags: Instagram, photos, gallery, images, widget, shortcode, hashtag
 Requires at least: 3.0.1
 Tested up to: 3.4.2
-Stable tag: 1.1
+Stable tag: 1.2
 
 
 Simply, quickly and easily, displays one or more Instagram images from a User ID 
@@ -12,12 +12,10 @@ or a from a hashtag, using shortcodes or widgets.
 
 == Description ==
 
-
 The “Easy Instagram” plugin displays an Instagram image from an Instagram user's 
 photo collection or from images throughout Instagram hashtagged with a specified tag. 
 It can also create a gallery of up to ten images fed either from 
 the Instagram user ID or the tag.  
-
 
 **“Easy Instagram” contains:**
 
@@ -106,13 +104,17 @@ This means that when a new image is uploaded to Instagram, it will not appear on
 
 == Screenshots ==
 
-1. Your website when you’ve used either the “Easy Instagram” shortcode in the content area or the widget to place an Instagram photo feed.
-2. The Instagram client registration form.
-3. The Instagram client registration response.
-4. The WordPress plugin Settings page for “Easy Instagram”.
-5. An example of two “Easy Instagram” widgets being used to set up an Instagram photo feed.
+1. Your website when you’ve used the “Easy Instagram” shortcode in the content area.
+2. Your website when you’ve used the “Easy Instagram” widget to place an Instagram photo feed in a sidebar.
+3. The Instagram client registration form.
+4. The Instagram client registration response.
+5. The WordPress plugin settings page for “Easy Instagram”.
+6. The WordPress widget settings where two widgets are placed in one sidebar.
 
 == Changelog ==
+
+= 1.2 =
+A few graphical edits.
 
 = 1.1 =
 Fix a few cache related bugs.
