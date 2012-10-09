@@ -3,8 +3,8 @@
 Plugin Name: Easy Instagram
 Plugin URI: 
 Description: Display one or more Instagram images by user id or tag
-Version: 1.1
-Author: Velomedia
+Version: 1.2
+Author: VeloMedia
 Author URI: http://www.velomedia.com
 Licence: 
 */
