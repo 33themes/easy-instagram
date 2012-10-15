@@ -114,15 +114,15 @@ This means that when a new image is uploaded to Instagram, it will not appear on
 == Changelog ==
 
 = 1.2.1 =
-Fix: “Cannot redeclare class InstagramException” for some install configurations.
-Fix: cURL is unable to get Instagram data over https on some installs.
+* Fix: “Cannot redeclare class InstagramException” for some install configurations.
+* Fix: cURL is unable to get Instagram data over https on some installs.
 
 = 1.2 =
-A few graphical edits.
+* A few graphical edits.
 
 = 1.1 =
-Fix a few cache related bugs.
-Add the “caption_hashtags” attribute to the shortcode.
+* Fix a few cache related bugs.
+* Add the “caption_hashtags” attribute to the shortcode.
 
 = 1.0 = 
-First version
+* First version
