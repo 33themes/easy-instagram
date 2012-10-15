@@ -125,4 +125,4 @@ This means that when a new image is uploaded to Instagram, it will not appear on
 * Add the “caption_hashtags” attribute to the shortcode.
 
 = 1.0 = 
-* First version
+* First version.
