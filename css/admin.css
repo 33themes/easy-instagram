@@ -1,0 +1,38 @@
+table.easy-instagram-settings {
+	width: 100%;
+}
+
+table.easy-instagram-settings td {
+	padding: 3px 5px 8px 5px;
+}
+
+table.easy-instagram-settings td.labels {
+	width: 30%;
+	font-weight: bold;
+}
+
+.easy-instagram-settings-form h3 {
+	padding: 7px 10px;
+	background-color: #dadada;
+	width: 95%;
+	margin: 10px 0px 0px 0px;
+}
+
+.easy-instagram-settings-form input[type='text'] {
+	width: 500px;
+	padding: 5px;
+}
+
+.easy-instagram-settings-form .info {
+	font-size: 90%;
+	color: #14f;
+	padding: 0px 0px 0px 5px;
+}
+
+.form-error {
+	color: #f00;
+}
+
+table.easy-instagram-settings tr.warning {
+	color: #f00;
+}
