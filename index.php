@@ -3,7 +3,7 @@
 Plugin Name: Easy Instagram
 Plugin URI: 
 Description: Display one or more Instagram images by user id or tag
-Version: 1.2
+Version: 1.2.1
 Author: VeloMedia
 Author URI: http://www.velomedia.com
 Licence: 
@@ -148,7 +148,7 @@ class Easy_Instagram {
 
 
 		$config = self::get_instagram_config();
-		$instagram = new Instagram( $config );
+		$instagram = new MC_Instagram_Connector( $config );
 		$access_token = self::get_access_token();
 		$cache_dir = self::get_cache_dir();
 		$cache_expire_time = self::get_cache_refresh_minutes();
@@ -415,7 +415,7 @@ class Easy_Instagram {
 		$out = '';
 
 		$config = self::get_instagram_config();
-		$instagram = new Instagram( $config );
+		$instagram = new MC_Instagram_Connector( $config );
 		$instagram->setAccessToken( $access_token );
 
 		if ( ! empty( $user_id ) ) {

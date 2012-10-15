@@ -3,7 +3,7 @@ Contributors: VeloMedia
 Tags: Instagram, photos, gallery, images, widget, shortcode, hashtag
 Requires at least: 3.0.1
 Tested up to: 3.4.2
-Stable tag: 1.2
+Stable tag: 1.2.1
 
 
 Simply, quickly and easily, displays one or more Instagram images from a User ID 
@@ -112,6 +112,10 @@ This means that when a new image is uploaded to Instagram, it will not appear on
 6. The WordPress widget settings where two widgets are placed in one sidebar.
 
 == Changelog ==
+
+= 1.2.1 =
+Fix: “Cannot redeclare class InstagramException” for some install configurations.
+Fix: cURL is unable to get Instagram data over https on some installs.
 
 = 1.2 =
 A few graphical edits.
