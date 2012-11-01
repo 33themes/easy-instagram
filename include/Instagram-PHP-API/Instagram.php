@@ -19,7 +19,7 @@
 // require_once 'Zend/Http/Client.php';
 require_once 'CurlHttpClient.php';
 
-class Instagram {
+class MC_Instagram_Connector {
 
     /**
      * The name of the GET param that holds the authentication code
@@ -102,7 +102,7 @@ class Instagram {
         $this->_config = $config;
         $this->_arrayResponses = $arrayResponses;
         if (empty($config)) {
-            throw new InstagramException('Configuration params are empty or not an array.');
+            throw new MC_Instagram_Connector_Exception('Configuration params are empty or not an array.');
         }
     }
 
@@ -111,9 +111,9 @@ class Instagram {
      * @param string $uri
      * @param string $method
      */
-    protected function _initHttpClient($uri, $method = CurlHttpClient::GET) {
+    protected function _initHttpClient($uri, $method = MC_CurlHttpClient::GET) {
         if ($this->_httpClient == null) {
-            $this->_httpClient = new CurlHttpClient($uri);
+            $this->_httpClient = new MC_CurlHttpClient($uri);
         } else {
             $this->_httpClient->setUri($uri);
         }
@@ -133,7 +133,7 @@ class Instagram {
      * @return string. The JSON encoded OAuth token
      */
     protected function _setOauthToken() {
-        $this->_initHttpClient($this->_endpointUrls['access_token'], CurlHttpClient::POST);
+        $this->_initHttpClient($this->_endpointUrls['access_token'], MC_CurlHttpClient::POST);
         $this->_httpClient->setPostParam('client_id', $this->_config['client_id']);
         $this->_httpClient->setPostParam('client_secret', $this->_config['client_secret']);
         $this->_httpClient->setPostParam('grant_type', $this->_config['grant_type']);
@@ -309,7 +309,7 @@ class Instagram {
      */
     public function modifyUserRelationship($id, $action) {
         $endpointUrl = sprintf($this->_endpointUrls['modify_user_relationship'], $id, $action, $this->getAccessToken());
-        $this->_initHttpClient($endpointUrl, CurlHttpClient::POST);
+        $this->_initHttpClient($endpointUrl, MC_CurlHttpClient::POST);
         $this->_httpClient->setPostParam("action",$action);
         $this->_httpClient->setPostParam("access_token",$this->getAccessToken());
         return $this->_getHttpClientResponse();
@@ -366,7 +366,7 @@ class Instagram {
     public function postMediaComment($id, $text) {
         $this->_init();
         $endpointUrl = sprintf($this->_endpointUrls['post_media_comment'], $id, $text, $this->getAccessToken());
-        $this->_initHttpClient($endpointUrl, CurlHttpClient::POST);
+        $this->_initHttpClient($endpointUrl, MC_CurlHttpClient::POST);
         return $this->_getHttpClientResponse();
     }
 
@@ -377,7 +377,7 @@ class Instagram {
      */
     public function deleteComment($mediaId, $commentId) {
         $endpointUrl = sprintf($this->_endpointUrls['delete_media_comment'], $mediaId, $commentId, $this->getAccessToken());
-        $this->_initHttpClient($endpointUrl, CurlHttpClient::DELETE);
+        $this->_initHttpClient($endpointUrl, MC_CurlHttpClient::DELETE);
         return $this->_getHttpClientResponse();
     }
 
@@ -397,7 +397,7 @@ class Instagram {
      */
     public function postLike($mediaId) {
         $endpointUrl = sprintf($this->_endpointUrls['post_like'], $mediaId);
-        $this->_initHttpClient($endpointUrl, CurlHttpClient::POST);
+        $this->_initHttpClient($endpointUrl, MC_CurlHttpClient::POST);
         $this->_httpClient->setPostParam('access_token', $this->getAccessToken());
         return $this->_getHttpClientResponse();
     }
@@ -408,7 +408,7 @@ class Instagram {
      */
     public function removeLike($mediaId) {
         $endpointUrl = sprintf($this->_endpointUrls['remove_like'], $mediaId, $this->getAccessToken());
-        $this->_initHttpClient($endpointUrl, CurlHttpClient::DELETE);
+        $this->_initHttpClient($endpointUrl, MC_CurlHttpClient::DELETE);
         return $this->_getHttpClientResponse();
     }
 
@@ -479,5 +479,5 @@ class Instagram {
     }
 }
 
-class InstagramException extends Exception {
+class MC_Instagram_Connector_Exception extends Exception {
 }

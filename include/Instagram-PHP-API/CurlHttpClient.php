@@ -1,5 +1,5 @@
 <?php
-class CurlHttpClient {
+class MC_CurlHttpClient {
     /**
      * Default User-Agent
      * @var string
@@ -19,6 +19,9 @@ class CurlHttpClient {
      */
     private $handler;
 
+	private $curl_loops = 0;
+	private $curl_max_loops = 20;
+
     /**
      * Store the POST fields
      */
@@ -33,10 +36,27 @@ class CurlHttpClient {
         $this->_setOptions();
     }
 
+	private function _can_follow_redirects() {
+		if ( ini_get( 'open_basedir' ) != '' ) {
+			return FALSE;
+		}
+		
+		$safe_mode = ini_get( 'safe_mode' );
+		if ( $safe_mode && ( 'on' == strtolower( $safe_mode ) ) ) {
+			return FALSE;
+		}
+		
+		return TRUE;
+	}
+
     protected function _setOptions() {
         curl_setopt($this->handler, CURLOPT_RETURNTRANSFER, true);
-        curl_setopt($this->handler, CURLOPT_FOLLOWLOCATION, true);
         curl_setopt($this->handler, CURLOPT_USERAGENT, self::DEFAULT_USER_AGENT);
+        curl_setopt($this->handler, CURLOPT_SSL_VERIFYPEER, false); // On some servers the call failed on https requests
+		
+		if ( $this->_can_follow_redirects() ) {
+	        curl_setopt($this->handler, CURLOPT_FOLLOWLOCATION, true);		
+		}
     }
 
     /**
@@ -72,7 +92,7 @@ class CurlHttpClient {
                 curl_setopt($this->handler, CURLOPT_CUSTOMREQUEST, self::DELETE);
                 break;
             default:
-                throw new CurlHttpClientException('Method not supported');
+                throw new MC_CurlHttpClientException('Method not supported');
         }
     }
 
@@ -91,11 +111,73 @@ class CurlHttpClient {
      * @return string
      */
     public function getResponse() {
-        $response = curl_exec($this->handler);
+		if ( $this->_can_follow_redirects() ) {
+	        $response = curl_exec($this->handler);
+		}
+		else {	
+			$response = $this->curl_redir_exec();
+		}
+		
         curl_close($this->handler);
 
         return $response;
     }
+
+    /**
+     * Workaround for CURL not following redirects on some PHP configs 
+     * @return string
+     */
+	public function curl_redir_exec() { 
+		if ($this->curl_loops++ >= $this->curl_max_loops) {
+			$this->curl_loops = 0;
+			return FALSE;
+		}
+ 
+		curl_setopt( $this->handler, CURLOPT_HEADER, true );
+ 
+		curl_setopt( $this->handler, CURLOPT_RETURNTRANSFER, true );
+ 
+		$data = curl_exec( $this->handler );
+		//print_r($data);
+		list( $header, $data ) = explode( "\r\n", $data, 2 );
+		$http_code = curl_getinfo( $this->handler, CURLINFO_HTTP_CODE );
+		if ( $http_code == 301 || $http_code == 302 ) {
+			$matches = array();
+			preg_match( '/Location:(.*?)\n/', $header, $matches );
+ 
+			$url = @parse_url( trim( array_pop( $matches ) ) );
+			if ( ! $url ) {
+				//couldn't process the url to redirect to
+				$this->curl_loops = 0;
+				return $data;
+			}
+ 
+			$last_url = parse_url( curl_getinfo( $this->handler, CURLINFO_EFFECTIVE_URL ) );
+ 
+			if ( ! $url['scheme'] ) {
+				$url['scheme'] = $last_url['scheme'];
+			}
+			
+			if ( ! $url['host'] ) {
+				$url['host'] = $last_url['host'];
+			}
+			
+			if ( ! $url['path'] ) {
+				$url['path'] = $last_url['path'];
+			}
+			
+			$new_url = $url['scheme'] . '://' . $url['host'] . $url['path'] 
+				. ( $url['query'] ? '?' . $url['query'] : '' );
+ 
+			curl_setopt( $this->handler, CURLOPT_URL, $new_url );
+ 
+			return $this->curl_redir_exec();
+		} 
+		else {
+			$this->curl_loops = 0;
+			return $data;
+		}
+	}
 
     /**
      * Extract the headers from a response string
@@ -150,4 +232,4 @@ class CurlHttpClient {
     }
 }
 
-class CurlHttpClientException extends Exception {}
+class MC_CurlHttpClientException extends Exception {}

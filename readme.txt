@@ -3,7 +3,7 @@ Contributors: VeloMedia
 Tags: Instagram, photos, gallery, images, widget, shortcode, hashtag
 Requires at least: 3.0.1
 Tested up to: 3.4.2
-Stable tag: 1.2.1
+Stable tag: 1.2.2
 
 
 Simply, quickly and easily, displays one or more Instagram images from a User ID 
@@ -78,11 +78,13 @@ To create one or more Instagram photo feeds, use the Easy Instagram widget, or u
 * [easy-instagram user_id='123456789' limit=4]
 * [easy-instagram tag='puppy' limit=2 caption_hashtags=false]
 
+*Options*
 * user_id = The numerical ID number for your Instagram account 
   shown on the Easy Instagram Settings page
 * tag = hashtags to search for
 * limit = amount of pictures to display (10 is max). Default: 1
-* caption_hashtags = show or hide hashtags in the image caption. Default: true
+* caption_hashtags = show or hide hashtags from the end of image caption. Default: true
+* caption_char_limit = limit the number of characters output in caption. Set 0 for no caption output. Default: 100 
 
 For multiple photo feeds each using different hashtags or user ids, repeat the shortcode with different options set, or add the widget a second time to the same widget space, and enter different settings.
 
@@ -113,6 +115,14 @@ This means that when a new image is uploaded to Instagram, it will not appear on
 
 == Changelog ==
 
+= 1.2.2 =
+* Improve “caption_hashtags” option to remove only hashtags from the end of the caption
+* Add “caption_char_limit” option
+* Fix: Widget title missing
+* Fix: “CURLOPT_FOLLOWLOCATION cannot be activated when in safe_mode or an open_basedir is set”
+* Fix: Image author not showing when the image has no caption
+* Fix: Invalid image time when the image has no caption
+
 = 1.2.1 =
 * Fix: “Cannot redeclare class InstagramException” for some install configurations.
 * Fix: cURL is unable to get Instagram data over https on some installs.
@@ -125,4 +135,4 @@ This means that when a new image is uploaded to Instagram, it will not appear on
 * Add the “caption_hashtags” attribute to the shortcode.
 
 = 1.0 = 
-* First version.
+* First version

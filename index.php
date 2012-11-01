@@ -3,7 +3,7 @@
 Plugin Name: Easy Instagram
 Plugin URI: 
 Description: Display one or more Instagram images by user id or tag
-Version: 1.2.1
+Version: 1.2.2
 Author: VeloMedia
 Author URI: http://www.velomedia.com
 Licence: 
@@ -31,6 +31,7 @@ class Easy_Instagram {
 	static $minimum_cache_expire_minutes = 10;
 	static $default_cache_expire_minutes = 30;
 	static $max_images = 10;
+	static $default_caption_char_limit = 100;
 
 	static function admin_menu() {
 		add_submenu_page(
@@ -387,22 +388,23 @@ class Easy_Instagram {
 		extract(
 			shortcode_atts( 
 				array(
-					'tag' 				=> '',
-					'user_id' 			=> '',
-					'limit'     		=> 1,
-					'caption_hashtags' 	=> 'true'
+					'tag'					=> '',
+					'user_id'				=> '',
+					'limit'					=> 1,
+					'caption_hashtags'		=> 'true',
+					'caption_char_limit'	=> self::$default_caption_char_limit
 				), 
 				$attributes
 			) 
 		);
 		
 		$caption_hashtags = strtolower( $caption_hashtags );
-		return self::generate_content( $tag, $user_id, $limit, $caption_hashtags );
+		return self::generate_content( $tag, $user_id, $limit, $caption_hashtags, $caption_char_limit );
 	}
 
 	//=========================================================================
 	
-	static function generate_content( $tag, $user_id, $limit, $caption_hashtags ) {
+	static function generate_content( $tag, $user_id, $limit, $caption_hashtags, $caption_char_limit ) {
 		if ( empty( $tag ) && empty( $user_id ) ) {
 			return '';
 		}
@@ -464,10 +466,9 @@ class Easy_Instagram {
 			$cache_data['data'] = array();
 
 			foreach ( $live_data as $elem ) {
+				$caption_from = '';
 				if ( isset( $elem->caption ) ) {
 					$caption_text = isset( $elem->caption->text ) ? trim( $elem->caption->text ) : '';
-
-					$caption_from = '';
 					
 					if ( isset( $elem->caption->from ) ) {
 						if ( isset( $elem->caption->from->full_name ) ) {
@@ -491,12 +492,20 @@ class Easy_Instagram {
 						}
  					}
 
-					$caption_created_time = isset( $elem->caption->created_time ) ? $elem->caption->created_time : time();
+					$caption_created_time = $elem->caption->created_time;
 				}
 				else {
 					$caption_text = '';
-					$caption_from = '';
-					$caption_created_time = time();
+					if ( isset( $elem->user ) ) {
+						if ( isset( $elem->user->full_name ) ) {
+							$caption_from = $elem->user->full_name;
+						}
+
+						if ( empty( $caption_from ) && isset( $elem->user->username ) ) {
+							$caption_from = $elem->user->username;
+						}
+					}
+					$caption_created_time = NULL;
 				}
 				
 				$cached_elem = array(
@@ -589,18 +598,50 @@ class Easy_Instagram {
 				$out .= '<img src="' . $image_url . '" alt="" style="width:' 
 					. $width. 'px; height: ' . $height . 'px;" class="easy-instagram-thumbnail" />';
 
-				$out .= '<div class="easy-instagram-thumbnail-author">by ' . $elem['caption_from'] . '</div>';
+				if ( '' != $elem['caption_from'] ) {
+					$out .= '<div class="easy-instagram-thumbnail-author">by ' . $elem['caption_from'] . '</div>';
+				}
 
-				$caption_text = $elem['caption_text'] ;
+				$caption_text = trim( $elem['caption_text'] );
+				
+				// Remove only hashtags at the end of the caption
+				$failsafe_count = 100;
 				if ( 'false' == $caption_hashtags ) {
-					$caption_text = preg_replace( '/#[^\\s]+/', '', $caption_text );
+					do {
+						$no_hashtags_text = $caption_text;
+						$caption_text = preg_replace( '/\s+#[^\\s]+\s?$/', '', $no_hashtags_text );
+						$failsafe_count--;
+						if ( $failsafe_count < 0 ) {
+							break;
+						}
+					} while ( $caption_text != $no_hashtags_text );
+				
+					//$caption_text = preg_replace( '/#[^\\s]+/', '', $caption_text );
 					$caption_text = trim( $caption_text );
-				}				
+					
+					if ( preg_match( '/^#[^\\s]*$/', $caption_text ) ) {
+						$caption_text = '';
+					}
+				}
+				
+				// Truncate caption
+				if ( ( $caption_char_limit > 0 ) && ( strlen( $caption_text ) > $caption_char_limit ) ) {
+					$caption_text = substr( $caption_text, 0, $caption_char_limit);
+					$caption_text = substr( $caption_text, 0, strrpos( $caption_text, ' ') ) . ' ...';
+				}
 
-				$out .= '<div class="easy-instagram-thumbnail-caption">' . $caption_text . '</div>';
+				if ( $caption_char_limit > 0 ) {
+					$out .= '<div class="easy-instagram-thumbnail-caption">' . $caption_text . '</div>';
+				}
 
-				$elem_time = ( $elem['caption_created_time'] > $elem['created_time'] )
-							? $elem['caption_created_time'] : $elem['created_time'];
+				if ( NULL == $elem['caption_created_time'] ) {
+					$elem_time = $elem['created_time'];
+				}
+				else {
+					$elem_time = ( $elem['caption_created_time'] > $elem['created_time'] )
+								? $elem['caption_created_time'] : $elem['created_time'];
+				}
+				
 				$out .= '<div class="easy-instagram-thumbnail-time">' 
 					. self::relative_time( $elem_time ) 
 					. __( ' using Instagram', 'Easy_Instagram' )
@@ -943,6 +984,13 @@ class Easy_Instagram_Widget extends WP_Widget {
 	//==========================================================================
 
  	public function form( $instance ) {
+		if ( isset( $instance['title'] ) ) {
+			$title = $instance['title'];
+		}
+		else {
+			$title = '';
+		}
+		 	
 		if ( isset( $instance['type'] ) ) {
 			$type = $instance['type'];
 		}
@@ -974,8 +1022,20 @@ class Easy_Instagram_Widget extends WP_Widget {
 		}
 		else {
 			$caption_hashtags = 'true';
+		}
+		
+		if ( isset( $instance['caption_char_limit'] ) ) {
+			$caption_char_limit = $instance['caption_char_limit'];
+		}
+		else {
+			$caption_char_limit = Easy_Instagram::$default_caption_char_limit;
 		}		
 ?>
+		<p>
+		<label for="<?php echo $this->get_field_id( 'title' ); ?>"><?php _e( 'Title:' ); ?></label> 
+		<input type='text' class="widefat" id="<?php echo $this->get_field_id( 'title' ); ?>" name="<?php echo $this->get_field_name( 'title' ); ?>" value="<?php _e( $title ); ?> " />
+		</p>
+
 		<p>
 		<label for="<?php echo $this->get_field_id( 'type' ); ?>"><?php _e( 'Type:' ); ?></label> 
 		<select class="widefat" id="<?php echo $this->get_field_id( 'type' ); ?>" name="<?php echo $this->get_field_name( 'type' ); ?>">
@@ -1018,6 +1078,11 @@ class Easy_Instagram_Widget extends WP_Widget {
 			<option value="false" <?php echo $selected;?>><?php _e( 'No' ); ?></option>
 		</select>
 		</p>
+		
+		<p>
+		<label for="<?php echo $this->get_field_id( 'caption_char_limit' ); ?>"><?php _e( 'Caption Character Limit (0 for no caption):' ); ?></label> 
+		<input type='text' class="widefat" id="<?php echo $this->get_field_id( 'caption_char_limit' ); ?>" name="<?php echo $this->get_field_name( 'caption_char_limit' ); ?>" value="<?php _e( $caption_char_limit ); ?> " />
+		</p>		
 <?php
 		
 	}
@@ -1026,10 +1091,12 @@ class Easy_Instagram_Widget extends WP_Widget {
 
 	public function update( $new_instance, $old_instance ) {
 		$instance = array();
+		$instance['title']				= strip_tags( $new_instance['title'] );
 		$instance['type']				= strip_tags( $new_instance['type'] );
 		$instance['value']				= trim( strip_tags( $new_instance['value'] ) );
 		$instance['limit']				= strip_tags( $new_instance['limit'] );		
 		$instance['caption_hashtags'] 	= $new_instance['caption_hashtags'];
+		$instance['caption_char_limit'] = (int) $new_instance['caption_char_limit'];
 
 		return $instance;
 	}
@@ -1039,12 +1106,13 @@ class Easy_Instagram_Widget extends WP_Widget {
 	public function widget( $args, $instance ) {
 		extract( $args );
 
-		echo $before_widget;
+		$title = apply_filters( 'widget_title', $instance['title'] );
 		
 		$tag = '';
 		$user_id = '';
 		$limit = 1;
 		$caption_hashtags = 'true';
+		$caption_char_limit = Easy_Instagram::$default_caption_char_limit;
 		
 		if ( 'tag' == $instance['type'] ) {
 			$tag = trim( $instance['value'] );
@@ -1066,8 +1134,18 @@ class Easy_Instagram_Widget extends WP_Widget {
 			$caption_hashtags = $instance['caption_hashtags'];
 		}
 
-		$content = Easy_Instagram::generate_content( $tag, $user_id, $limit, $caption_hashtags );
+		if ( isset( $instance['caption_char_limit'] ) ) {
+			$caption_char_limit = (int) $instance['caption_char_limit'];
+		}
+
+		$content = Easy_Instagram::generate_content( $tag, $user_id, $limit, $caption_hashtags, $caption_char_limit );
 		
+		echo $before_widget;
+		
+		if ( ! empty( $title ) ) {
+			echo $before_title . $title . $after_title;
+		}
+				
 		echo $content;
 		
 		echo $after_widget;	
