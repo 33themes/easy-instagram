@@ -1,12 +1,12 @@
 <?php
 /*
 Plugin Name: Easy Instagram
-Plugin URI: 
+Plugin URI:
 Description: Display one or more Instagram images by user id or tag
-Version: 1.2.2
+Version: 1.2.3
 Author: VeloMedia
 Author URI: http://www.velomedia.com
-Licence: 
+Licence:
 */
 
 require_once 'include/Instagram-PHP-API/Instagram.php';
@@ -14,6 +14,9 @@ require_once 'include/Instagram-PHP-API/Instagram.php';
 add_action( 'admin_menu', array( 'Easy_Instagram', 'admin_menu' ) );
 add_action( 'wp_enqueue_scripts', array( 'Easy_Instagram', 'init_scripts_and_styles' ) );
 add_action( 'admin_init', array( 'Easy_Instagram', 'admin_init' ) );
+
+add_action( 'init', array( 'Easy_Instagram', 'init' ) );
+
 
 register_activation_hook( __FILE__, array( 'Easy_Instagram', 'plugin_activation' ) );
 register_deactivation_hook( __FILE__, array( 'Easy_Instagram', 'plugin_deactivation' ) );
@@ -32,14 +35,29 @@ class Easy_Instagram {
 	static $default_cache_expire_minutes = 30;
 	static $max_images = 10;
 	static $default_caption_char_limit = 100;
+	static $default_author_text = 'by %s';
+	static $default_thumb_click = '';
+	static $default_time_text = 'posted #T#'; //#T# will be replaced with the specified time_format
+	static $default_time_format = '#R#'; //Relative time
+
+
+	static function get_thumb_click_options() {
+		return array(
+			''			=> __( 'Do Nothing' ),
+			'thickbox'	=> __( 'Show in Thickbox' ) ,
+			'original'	=> __( 'Show original in a new tab' )
+		);
+	}
+
+	//=========================================================================
 
 	static function admin_menu() {
 		add_submenu_page(
 			'options-general.php',
-			__( 'Easy Instagram', 'Easy_Instagram' ), 
-			__( 'Easy Instagram', 'Easy_Instagram' ), 
+			__( 'Easy Instagram', 'Easy_Instagram' ),
+			__( 'Easy Instagram', 'Easy_Instagram' ),
 			'manage_options',
-			'easy-instagram', 
+			'easy-instagram',
 			array( 'Easy_Instagram', 'admin_page' )
 		);
 	}
@@ -57,7 +75,19 @@ class Easy_Instagram {
 
 	static function admin_init() {
 		wp_register_style( 'Easy_Instagram_Admin', plugins_url( 'css/admin.css', __FILE__ ) );
-		wp_enqueue_style( 'Easy_Instagram_Admin' );	
+		wp_enqueue_style( 'Easy_Instagram_Admin' );
+
+		global $pagenow;
+		if ( 'options-general.php' == $pagenow ) {
+			wp_register_script( 'Easy_Instagram_Admin', plugins_url( 'js/admin.js', __FILE__ ) );
+			wp_enqueue_script( 'Easy_Instagram_Admin' );
+		}
+	}
+
+	//=========================================================================
+
+	static function init() {
+		add_thickbox();
 	}
 
 	//=========================================================================
@@ -88,7 +118,7 @@ class Easy_Instagram {
 			'grant_type' 	=> 'authorization_code',
 			'redirect_uri' 	=> $redirect_uri
 		);
-	}	
+	}
 
 	//=========================================================================
 
@@ -98,22 +128,22 @@ class Easy_Instagram {
 
 			$errors = array();
 
-			$instagram_client_id = isset( $_POST['ei_client_id'] ) 
-				? trim( $_POST['ei_client_id'] ) 
+			$instagram_client_id = isset( $_POST['ei_client_id'] )
+				? trim( $_POST['ei_client_id'] )
 				: '';
 
-			$instagram_client_secret = isset( $_POST['ei_client_secret'] ) 
-				? trim( $_POST['ei_client_secret'] ) 
+			$instagram_client_secret = isset( $_POST['ei_client_secret'] )
+				? trim( $_POST['ei_client_secret'] )
 				: '';
 
-			$instagram_redirect_uri = isset( $_POST['ei_redirect_uri'] ) 
-				? trim( $_POST['ei_redirect_uri'] ) 
+			$instagram_redirect_uri = isset( $_POST['ei_redirect_uri'] )
+				? trim( $_POST['ei_redirect_uri'] )
 				: '';
 
 			if ( empty( $instagram_client_id ) ) {
 				$errors['client_id'] = __( 'Please enter your Instagram client id', 'Easy_Instagram' );
 			}
-			
+
 			if ( empty( $instagram_client_secret ) ) {
 				$errors['client_secret'] = __( 'Please enter your Instagram client secret', 'Easy_Instagram' );
 			}
@@ -126,18 +156,18 @@ class Easy_Instagram {
 				self::set_instagram_settings( $instagram_client_id, $instagram_client_secret, $instagram_redirect_uri );
 			}
 
-			$cache_expire_time = isset( $_POST['ei_cache_expire_time'] ) 
-				? (int) $_POST['ei_cache_expire_time'] 
+			$cache_expire_time = isset( $_POST['ei_cache_expire_time'] )
+				? (int) $_POST['ei_cache_expire_time']
 				: 0;
 
 			if ( $cache_expire_time < self::$minimum_cache_expire_minutes ) {
 				$cache_expire_time = self::$minimum_cache_expire_minutes;
 			}
 
-			self::set_cache_refresh_minutes( $cache_expire_time );		
+			self::set_cache_refresh_minutes( $cache_expire_time );
 		}
 		else {
-			list( $instagram_client_id, $instagram_client_secret, $instagram_redirect_uri ) 
+			list( $instagram_client_id, $instagram_client_secret, $instagram_redirect_uri )
 				= self::get_instagram_settings();
 		}
 
@@ -171,7 +201,14 @@ class Easy_Instagram {
 	<div id="icon-options-general" class="icon32"></div>
 	<h2><?php _e( 'Easy Instagram', 'Easy_Instagram' ) ?></h2>
 
+	<h2 class='ei-nav-tab-wrapper'>
+	<a href='#' class='ei-nav-tab ei-nav-tab-active' id='ei-select-general-settings'><?php _e( 'Plugin Settings', 'Easy_Instagram' ); ?></a>
+	<a href='#' class='ei-nav-tab' id='ei-select-help'><?php _e( 'Help', 'Easy_Instagram' ); ?></a>
+	</h2>
+
+	<div id='ei-general-settings'>
 	<form method='POST' action='' class='easy-instagram-settings-form'>
+
 		<table class='easy-instagram-settings'>
 			<?php if ( !is_writable( $cache_dir ) ): ?>
 				<tr class='warning'>
@@ -231,13 +268,13 @@ class Easy_Instagram {
 			<tr>
 				<td class='labels'>
 					<label for='ei-cache-expire-time'><?php _e( 'Cache Expire Time (minutes)', 'Easy_Instagram' ); ?></label>
-				</td>	
+				</td>
 				<td>
 					<input type='text' name='ei_cache_expire_time' id='ei-cache-expire-time' value='<?php echo esc_html( $cache_expire_time ); ?>' />
 					<br />
 					<span class='info'>
-						<?php printf( __( 'Minimum expire time: %d minute.', 
-											'Easy_Instagram' ), 
+						<?php printf( __( 'Minimum expire time: %d minute.',
+											'Easy_Instagram' ),
 										self::$minimum_cache_expire_minutes ); ?>
 					</span>
 				</td>
@@ -265,17 +302,17 @@ class Easy_Instagram {
 
 			<tr>
 				<td>
-					<?php if ( !empty( $instagram_client_id ) 
-						&& !empty( $instagram_client_secret ) 
+					<?php if ( !empty( $instagram_client_id )
+						&& !empty( $instagram_client_secret )
 						&& ! empty( $instagram_redirect_uri ) ): ?>
 						<?php $authorization_url = $instagram->getAuthorizationUrl(); ?>
 						<a href="<?php echo $authorization_url;?>"><?php _e( 'Instagram Login' );?></a>
 					<?php else: ?>
 						<?php _e( 'Please configure the General Settings first', 'Easy_Instagram' ); ?>
 					<?php endif; ?>
-				</td>	
+				</td>
 				<td>
-				</td>			
+				</td>
 			</tr>
 		<?php else: ?>
 			<?php list( $username, $user_id ) = self::get_instagram_user_data(); ?>
@@ -287,7 +324,7 @@ class Easy_Instagram {
 						<label><?php _e( 'Instagram Username', 'Easy_Instagram' ); ?></label>
 					</td>
 					<td>
-						<?php echo $username; ?>	
+						<?php echo $username; ?>
 					</td>
 				</tr>
 
@@ -296,7 +333,7 @@ class Easy_Instagram {
 						<label><?php _e( 'Instagram User ID', 'Easy_Instagram' ); ?></label>
 					</td>
 					<td>
-						<?php echo $user_id; ?>	
+						<?php echo $user_id; ?>
 					</td>
 				</tr>
 
@@ -307,14 +344,26 @@ class Easy_Instagram {
 					<td>
 						<input type='submit' name='instagram-logout' value="<?php _e( 'Instagram Logout' );?>" />
 					</td>
-				</tr>				
+				</tr>
 		<?php endif; ?>
 		</table>
-	</form>		
+	</form>
 
-<?php		
+	</div> <?php /* ei-general-setings */ ?>
+
+	<div id='ei-help'>
+		<?php self::print_help_page(); ?>
+	</div>
+
+<?php
 
 	}
+	//=========================================================================
+
+	static function print_help_page() {
+		include('usage.html');
+	}
+
 	//=========================================================================
 
 	static function set_instagram_user_data( $username, $id ) {
@@ -354,7 +403,7 @@ class Easy_Instagram {
 		$recent = json_decode( $live_data );
 		if ( empty( $recent ) ) {
 			$live_data = NULL;
-		}				
+		}
 		else {
 			$live_data = array_slice( $recent->data, 0, $limit );
 		}
@@ -374,7 +423,7 @@ class Easy_Instagram {
 		$recent = json_decode( $live_data );
 		if ( empty( $recent ) || !isset( $recent->data ) ) {
 			$live_data = NULL;
-		}				
+		}
 		else {
 			$live_data = array_slice( $recent->data, 0, $limit );
 		}
@@ -383,28 +432,33 @@ class Easy_Instagram {
 	}
 
 	//=========================================================================
-	
+
 	static function shortcode( $attributes ) {
 		extract(
-			shortcode_atts( 
+			shortcode_atts(
 				array(
 					'tag'					=> '',
 					'user_id'				=> '',
 					'limit'					=> 1,
 					'caption_hashtags'		=> 'true',
-					'caption_char_limit'	=> self::$default_caption_char_limit
-				), 
+					'caption_char_limit'	=> self::$default_caption_char_limit,
+					'author_text'			=> self::$default_author_text,
+					'thumb_click'			=> self::$default_thumb_click,
+					'time_text'				=> self::$default_time_text,
+					'time_format'			=> self::$default_time_format
+				),
 				$attributes
-			) 
+			)
 		);
-		
+
 		$caption_hashtags = strtolower( $caption_hashtags );
-		return self::generate_content( $tag, $user_id, $limit, $caption_hashtags, $caption_char_limit );
+
+		return self::generate_content( $tag, $user_id, $limit, $caption_hashtags, $caption_char_limit, $author_text, $thumb_click, $time_text, $time_format );
 	}
 
 	//=========================================================================
-	
-	static function generate_content( $tag, $user_id, $limit, $caption_hashtags, $caption_char_limit ) {
+
+	static function generate_content( $tag, $user_id, $limit, $caption_hashtags, $caption_char_limit, $author_text, $thumb_click, $time_text, $time_format ) {
 		if ( empty( $tag ) && empty( $user_id ) ) {
 			return '';
 		}
@@ -414,6 +468,10 @@ class Easy_Instagram {
 			return '';
 		}
 
+		$time_text = trim( $time_text );
+		$time_format = trim( $time_format );
+
+
 		$out = '';
 
 		$config = self::get_instagram_config();
@@ -422,7 +480,7 @@ class Easy_Instagram {
 
 		if ( ! empty( $user_id ) ) {
 			list( $data, $expired ) = self::get_cached_data_for_id_or_tag( $user_id, $limit, 'id' );
-			
+
 			if ( $expired ) {
 				$live_data = self::get_live_user_data( $instagram, $user_id, $limit );
 				if ( ! empty( $live_data ) ) {
@@ -435,8 +493,8 @@ class Easy_Instagram {
 			elseif ( NULL == $data ) {
 				$live_data = self::get_live_user_data( $instagram, $user_id, $limit );
 			}
-			
-			$cache_index = 'id' . $user_id;			
+
+			$cache_index = 'id' . $user_id;
 		}
 		else {
 			if ( ! empty( $tag ) ) {
@@ -467,16 +525,31 @@ class Easy_Instagram {
 
 			foreach ( $live_data as $elem ) {
 				$caption_from = '';
+				$user_name = '';
+
+				if ( isset( $elem->caption ) && isset( $elem->caption->from ) && isset( $elem->caption->from->username ) ) {
+					$user_name = $elem->caption->from->username;
+				}
+
 				if ( isset( $elem->caption ) ) {
 					$caption_text = isset( $elem->caption->text ) ? trim( $elem->caption->text ) : '';
-					
+
 					if ( isset( $elem->caption->from ) ) {
+						if ( isset( $elem->caption->from->username ) ) {
+							$user_name = $elem->caption->from->username;
+						}
+
 						if ( isset( $elem->caption->from->full_name ) ) {
 							$caption_from = $elem->caption->from->full_name;
 						}
+						else {
+							$caption_from = $user_name;
+						}
+					}
 
-						if ( empty( $caption_from ) && isset( $elem->caption->from->username ) ) {
-							$caption_from = $elem->caption->from->username;
+					if ( empty( $user_name ) ) {
+						if ( isset( $elem->user ) &&  isset( $elem->user->username ) ) {
+							$user_name = $elem->user->username;
 						}
 					}
 
@@ -486,8 +559,8 @@ class Easy_Instagram {
 								$caption_from = $elem->user->full_name;
 							}
 
-							if ( empty( $caption_from ) && isset( $elem->user->username ) ) {
-								$caption_from = $elem->user->username;
+							if ( empty( $caption_from ) ) {
+								$caption_from = $user_name;
 							}
 						}
  					}
@@ -496,24 +569,29 @@ class Easy_Instagram {
 				}
 				else {
 					$caption_text = '';
+					if ( isset( $elem->user ) && isset( $elem->user->username ) ) {
+						$user_name = $elem->user->username;
+					}
+
 					if ( isset( $elem->user ) ) {
 						if ( isset( $elem->user->full_name ) ) {
 							$caption_from = $elem->user->full_name;
 						}
 
-						if ( empty( $caption_from ) && isset( $elem->user->username ) ) {
-							$caption_from = $elem->user->username;
+						if ( empty( $caption_from ) ) {
+							$caption_from = $user_name;
 						}
 					}
 					$caption_created_time = NULL;
 				}
-				
+
 				$cached_elem = array(
 					'link' 					=> isset( $elem->link ) ? $elem->link : '#',
 					'caption_text' 			=> $caption_text,
 					'caption_from' 			=> $caption_from,
 					'created_time' 			=> $elem->created_time,
-					'caption_created_time' 	=> $caption_created_time
+					'caption_created_time' 	=> $caption_created_time,
+					'user_name'				=> $user_name
 				);
 
 				$images = $elem->images;
@@ -523,8 +601,8 @@ class Easy_Instagram {
 						'height' 	=> $images->low_resolution->height
 					);
 
-					$local_url = self::save_remote_image( 
-						$images->low_resolution->url, 
+					$local_url = self::save_remote_image(
+						$images->low_resolution->url,
 						'low_resolution'
 					);
 
@@ -541,9 +619,9 @@ class Easy_Instagram {
 						'width' 	=> $images->thumbnail->width,
 						'height' 	=> $images->thumbnail->height
 					);
-						
-					$local_url = self::save_remote_image( 
-						$images->thumbnail->url, 
+
+					$local_url = self::save_remote_image(
+						$images->thumbnail->url,
 						'thumbnail'
 					);
 
@@ -560,9 +638,9 @@ class Easy_Instagram {
 						'width' 	=> $images->standard_resolution->width,
 						'height' 	=> $images->standard_resolution->height
 					);
-						
-					$local_url = self::save_remote_image( 
-						$images->standard_resolution->url, 
+
+					$local_url = self::save_remote_image(
+						$images->standard_resolution->url,
 						'standard_resolution'
 					);
 
@@ -590,44 +668,56 @@ class Easy_Instagram {
 		if ( isset( $instagram_elements ) ) {
 			$crt = 0;
 			foreach ( $instagram_elements as $elem ) {
+				$large_image_url = $elem['standard_resolution']['url'];
 				$image_url = $elem['thumbnail']['url'];
+				$instagram_image_original_link = $elem['link'];
 				$width = $elem['thumbnail']['width'];
 				$height = $elem['thumbnail']['height'];
 
+				$caption_text = self::get_caption_text( $elem, $caption_hashtags, $caption_char_limit );
+
+				$thickbox_caption_text = self::get_caption_text( $elem, 'false', 100 );
+
 				$out .= '<div class="easy-instagram-thumbnail-wrapper">';
-				$out .= '<img src="' . $image_url . '" alt="" style="width:' 
+
+				$has_thumb_action = FALSE;
+				switch ( $thumb_click ) {
+					case 'thickbox':
+						$out .= '<a href="' . $large_image_url . '" class="thickbox" title="' . $thickbox_caption_text . '">';
+						$has_thumb_action = TRUE;
+						break;
+
+					case 'original':
+						$out .= '<a href="' . $instagram_image_original_link . '" target="_blank" title="' . $thickbox_caption_text . '">';
+						$has_thumb_action = TRUE;
+						break;
+
+					default:
+						break;
+				}
+
+				$out .= '<img src="' . $image_url . '" alt="" style="width:'
 					. $width. 'px; height: ' . $height . 'px;" class="easy-instagram-thumbnail" />';
 
-				if ( '' != $elem['caption_from'] ) {
-					$out .= '<div class="easy-instagram-thumbnail-author">by ' . $elem['caption_from'] . '</div>';
+				if ( $has_thumb_action ) {
+					$out .= '</a>';
 				}
 
-				$caption_text = trim( $elem['caption_text'] );
-				
-				// Remove only hashtags at the end of the caption
-				$failsafe_count = 100;
-				if ( 'false' == $caption_hashtags ) {
-					do {
-						$no_hashtags_text = $caption_text;
-						$caption_text = preg_replace( '/\s+#[^\\s]+\s?$/', '', $no_hashtags_text );
-						$failsafe_count--;
-						if ( $failsafe_count < 0 ) {
-							break;
-						}
-					} while ( $caption_text != $no_hashtags_text );
-				
-					//$caption_text = preg_replace( '/#[^\\s]+/', '', $caption_text );
-					$caption_text = trim( $caption_text );
-					
-					if ( preg_match( '/^#[^\\s]*$/', $caption_text ) ) {
-						$caption_text = '';
+				if ( '' != $elem['caption_from'] ) {
+					// Make a link only from the user name, not all the 'published by' text
+					if ( preg_match( '/^(.*)%s(.*)$/', $author_text, $matches ) ) {
+						$published_by = $matches[1] . '<a href="http://instagram.com/' . $elem['user_name'] . '" target="_blank">';
+						$published_by .= $elem['user_name'];
+						$published_by .= '</a>';
+						$published_by .= $matches[2];
 					}
-				}
-				
-				// Truncate caption
-				if ( ( $caption_char_limit > 0 ) && ( strlen( $caption_text ) > $caption_char_limit ) ) {
-					$caption_text = substr( $caption_text, 0, $caption_char_limit);
-					$caption_text = substr( $caption_text, 0, strrpos( $caption_text, ' ') ) . ' ...';
+					else {
+						$published_by = $author_text;
+					}
+
+					$out .= '<div class="easy-instagram-thumbnail-author">';
+					$out .= $published_by;
+					$out .= '</div>';
 				}
 
 				if ( $caption_char_limit > 0 ) {
@@ -641,21 +731,85 @@ class Easy_Instagram {
 					$elem_time = ( $elem['caption_created_time'] > $elem['created_time'] )
 								? $elem['caption_created_time'] : $elem['created_time'];
 				}
-				
-				$out .= '<div class="easy-instagram-thumbnail-time">' 
-					. self::relative_time( $elem_time ) 
+
+				if ( '' != $time_text ) {
+					$out .= '<div class="easy-instagram-thumbnail-time">';
+
+					if ( preg_match( '/^(.*)#T#(.*)$/', $time_text, $matches ) ) {
+						if ( '' != $time_format ) {
+							if ( '#R#' == $time_format ) { //Relative
+								$time_string = self::relative_time( $elem_time );
+							}
+							else {
+								$time_string = strftime( $time_format, $elem_time );
+							}
+						}
+						else {
+							$time_string = '';
+						}
+
+						$time_string = $matches[1] . $time_string . $matches[2];
+					}
+					else {
+						$time_string = $time_text; //No interpolation
+					}
+
+					$out .= $time_string;
+
+					$out .= '</div>';
+				}
+/*
+				$out .= '<div class="easy-instagram-thumbnail-time">'
+					. self::relative_time( $elem_time )
 					. __( ' using Instagram', 'Easy_Instagram' )
-					. '</div>';
+					. '</div>';*/
 
 				$out .= '</div>';
 
-				$crt++;	
-				if ( $crt >= $limit ) {	
+				$crt++;
+				if ( $crt >= $limit ) {
 					break;
 				}
-			}		
+			}
 		}
-		return $out;	
+		return $out;
+	}
+
+	//=========================================================================
+
+	static private function get_caption_text( $element, $caption_hashtags, $caption_char_limit ) {
+		$caption_text = trim( $element['caption_text'] );
+
+		// Remove only hashtags at the end of the caption
+		$failsafe_count = 100;
+		if ( 'false' == $caption_hashtags ) {
+			do {
+				$no_hashtags_text = $caption_text;
+				$caption_text = preg_replace( '/\s+#[^\\s]+\s?$/', '', $no_hashtags_text );
+				$failsafe_count--;
+				if ( $failsafe_count < 0 ) {
+					break;
+				}
+			} while ( $caption_text != $no_hashtags_text );
+
+			//$caption_text = preg_replace( '/#[^\\s]+/', '', $caption_text );
+			$caption_text = trim( $caption_text );
+
+			if ( preg_match( '/^#[^\\s]*$/', $caption_text ) ) {
+				$caption_text = '';
+			}
+		}
+
+		// Truncate caption
+		if ( ( $caption_char_limit > 0 ) && ( strlen( $caption_text ) > $caption_char_limit ) ) {
+			$caption_text = substr( $caption_text, 0, $caption_char_limit);
+			$caption_text = substr( $caption_text, 0, strrpos( $caption_text, ' ') );
+			if ( strlen( $caption_text ) > 0 ) {
+				$caption_text .= ' ...';
+			}
+		}
+
+		return $caption_text;
 	}
 
 	//=========================================================================
@@ -682,7 +836,7 @@ class Easy_Instagram {
 		$would_block = TRUE;
 		if ( flock( $handle, LOCK_EX, $would_block ) ) {
 			fwrite( $handle, $serialized );
-			fflush( $handle ); 
+			fflush( $handle );
 			flock( $handle, LOCK_UN ); // release the lock
 		}
 		else {
@@ -690,7 +844,7 @@ class Easy_Instagram {
 		}
 
 		fclose( $handle );
-		return TRUE;	
+		return TRUE;
 	}
 
 	//=========================================================================
@@ -706,7 +860,7 @@ class Easy_Instagram {
 
 		$handle = fopen( $path, 'r' );
 
-		if ( flock( $handle, LOCK_SH ) ) {	
+		if ( flock( $handle, LOCK_SH ) ) {
 			$data = fgets( $handle );
 			flock( $handle, LOCK_UN ); // release the lock
 		}
@@ -762,8 +916,8 @@ class Easy_Instagram {
 
 			fclose( $handle );
 
-			unlink( $path );	
-	
+			unlink( $path );
+
 			$file_types = array( 'thumbnail', 'low_resolution', 'standard_resolution' );
 			if ( isset( $cached_data ) && isset( $cached_data['data'] ) ) {
 				foreach ( $cached_data['data'] as $elem ) {
@@ -783,7 +937,7 @@ class Easy_Instagram {
 		}
 	}
 
-	//=========================================================================	
+	//=========================================================================
 
 	static function save_remote_image( $remote_image_url, $id ) {
 		$filename = '';
@@ -796,11 +950,16 @@ class Easy_Instagram {
 
 		$path = self::get_cache_dir() . $filename;
 
-		$content = file_get_contents( $remote_image_url );
-		if ( FALSE == $content ) {
+		$curl = curl_init();
+		curl_setopt( $curl, CURLOPT_RETURNTRANSFER, true );
+		curl_setopt( $curl, CURLOPT_URL, $remote_image_url );
+		$content = curl_exec( $curl );
+		curl_close($curl);
+
+		if ( empty( $content ) ) {
 			return NULL;
 		}
-		
+
 		if ( FALSE == file_put_contents( $path, $content ) ) {
 			return NULL;
 		}
@@ -808,13 +967,13 @@ class Easy_Instagram {
 		return plugins_url( self::$cache_dir . $filename, __FILE__ );
 	}
 
-	//=========================================================================	
+	//=========================================================================
 
 	static function get_cache_refresh_minutes() {
 		return get_option( 'easy_instagram_cache_expire_time', self::$default_cache_expire_minutes );
 	}
 
-	//=========================================================================		
+	//=========================================================================
 
 	static function set_cache_refresh_minutes( $minutes = 0 ) {
 		if ( 0 == $minutes ) {
@@ -830,7 +989,7 @@ class Easy_Instagram {
 		$periods = array( "sec", "min", "hour", "day", "week", "month", "years", "decade" );
 		$lengths = array( "60", "60", "24", "7", "4.35", "12", "10" );
 
-		if ($difference > 0) { // this was in the past
+		if ( $difference > 0 ) { // this was in the past
 			$ending = "ago";
 		} else { // this was in the future
 			$difference = -$difference;
@@ -843,23 +1002,23 @@ class Easy_Instagram {
 		if($difference != 1) {
 			$periods[$j] .= "s";
 		}
-		
+
 		$text = "$difference $periods[$j] $ending";
 		return $text;
-	}		
+	}
 
 	//=====================================================================
 
 	static function plugin_activation() {
-		wp_schedule_event( 
-			current_time( 'timestamp' ), 
+		wp_schedule_event(
+			current_time( 'timestamp' ),
 			'daily',
-			'easy_instagram_clear_cache_event' 
-		);	
+			'easy_instagram_clear_cache_event'
+		);
 	}
-	
+
 	//=====================================================================
-	
+
 	static function clear_expired_cache_action() {
 		$valid_files = array();
 		$cache_dir = self::get_cache_dir();
@@ -895,7 +1054,7 @@ class Easy_Instagram {
 	static function remove_cache_file( $filename ) {
 		$cache_dir = self::get_cache_dir() ;
 		$path = $cache_dir . $filename;
-		
+
 		$handle = fopen( $path, 'r' );
 
 		if ( flock( $handle, LOCK_EX ) ) {
@@ -921,7 +1080,7 @@ class Easy_Instagram {
 		if ( $delta > 24 * 60 )	{
 			if ( !empty( $cached_data['data'] ) ) {
 				foreach ( $cached_data['data'] as $elem ) {
-					//Delete images					
+					//Delete images
 					foreach ( $file_types as $file_type ) {
 						if ( isset( $elem[$file_type] ) && isset( $elem[$file_type]['url'] ) ) {
 							// Extract the file name from the file URL and look for the file in the cache directory
@@ -933,7 +1092,7 @@ class Easy_Instagram {
 					}
 				}
 			}
-			
+
 			unlink( $path );
 		}
 		else {
@@ -953,12 +1112,12 @@ class Easy_Instagram {
 			}
 			$valid_files[] = $filename; //Keep the cache file as valid
 		}
-		
+
 		return $valid_files;
 	}
 
 	//=====================================================================
-	
+
 	static function plugin_deactivation() {
 		wp_clear_scheduled_hook( 'easy_instagram_clear_cache_event' );
 	}
@@ -972,10 +1131,10 @@ class Easy_Instagram_Widget extends WP_Widget {
 
 	public function __construct() {
 		parent::__construct(
-			'easy_instagram_widget_base', 
-			'Easy Instagram', 
-			array( 
-				'description' => 'Display one or more images from Instagram based on a tag or Instagram user id', 
+			'easy_instagram_widget_base',
+			'Easy Instagram',
+			array(
+				'description' => 'Display one or more images from Instagram based on a tag or Instagram user id',
 				'class' => 'easy-instagram-widget'
 			)
 		);
@@ -990,14 +1149,14 @@ class Easy_Instagram_Widget extends WP_Widget {
 		else {
 			$title = '';
 		}
-		 	
+
 		if ( isset( $instance['type'] ) ) {
 			$type = $instance['type'];
 		}
 		else {
 			$type = 'tag';
 		}
-		
+
 		if ( isset( $instance['value'] ) ) {
 			$value = $instance['value'];
 		}
@@ -1023,68 +1182,123 @@ class Easy_Instagram_Widget extends WP_Widget {
 		else {
 			$caption_hashtags = 'true';
 		}
-		
+
 		if ( isset( $instance['caption_char_limit'] ) ) {
 			$caption_char_limit = $instance['caption_char_limit'];
 		}
 		else {
 			$caption_char_limit = Easy_Instagram::$default_caption_char_limit;
-		}		
+		}
+
+		if ( isset( $instance['author_text'] ) ) {
+			$author_text = $instance['author_text'];
+		}
+		else {
+			$author_text = Easy_Instagram::$default_author_text;
+		}
+
+		if ( isset( $instance['thumb_click'] ) ) {
+			$thumb_click = $instance['thumb_click'];
+		}
+		else {
+			$thumb_click = Easy_Instagram::$default_thumb_click;
+		}
+
+		if ( isset( $instance['time_text'] ) ) {
+			$time_text = $instance['time_text'];
+		}
+		else {
+			$time_text = Easy_Instagram::$default_time_text;
+		}
+
+
+		if ( isset( $instance['time_format'] ) ) {
+			$time_format = $instance['time_format'];
+		}
+		else {
+			$time_format = Easy_Instagram::$default_time_format;
+		}
 ?>
 		<p>
-		<label for="<?php echo $this->get_field_id( 'title' ); ?>"><?php _e( 'Title:' ); ?></label> 
+		<label for="<?php echo $this->get_field_id( 'title' ); ?>"><?php _e( 'Title:' ); ?></label>
 		<input type='text' class="widefat" id="<?php echo $this->get_field_id( 'title' ); ?>" name="<?php echo $this->get_field_name( 'title' ); ?>" value="<?php _e( $title ); ?> " />
 		</p>
 
 		<p>
-		<label for="<?php echo $this->get_field_id( 'type' ); ?>"><?php _e( 'Type:' ); ?></label> 
+		<label for="<?php echo $this->get_field_id( 'type' ); ?>"><?php _e( 'Type:' ); ?></label>
 		<select class="widefat" id="<?php echo $this->get_field_id( 'type' ); ?>" name="<?php echo $this->get_field_name( 'type' ); ?>">
 			<?php $selected = ( 'tag' == $type ) ? 'selected="selected"' : ''; ?>
 			<option value="tag" <?php echo $selected;?>><?php _e( 'Tag' ); ?></option>
-			
+
 			<?php $selected = ( 'user_id' == $type ) ? 'selected="selected"' : ''; ?>
 			<option value="user_id" <?php echo $selected;?>><?php _e( 'User ID' ); ?></option>
 		</select>
 		</p>
-		
+
 		<p>
-		<label for="<?php echo $this->get_field_id( 'value' ); ?>"><?php _e( 'Value:' ); ?></label> 
+		<label for="<?php echo $this->get_field_id( 'value' ); ?>"><?php _e( 'ID/Hashtag Value:' ); ?></label>
 		<input type='text' class="widefat" id="<?php echo $this->get_field_id( 'value' ); ?>" name="<?php echo $this->get_field_name( 'value' ); ?>" value="<?php _e( $value ); ?> " />
 		</p>
-		
+
 		<p>
-		<label for="<?php echo $this->get_field_id( 'limit' ); ?>"><?php _e( 'Images:' ); ?></label> 
+		<label for="<?php echo $this->get_field_id( 'limit' ); ?>"><?php _e( 'Images:' ); ?></label>
 		<select class="widefat" id="<?php echo $this->get_field_id( 'limit' ); ?>" name="<?php echo $this->get_field_name( 'limit' ); ?>">
 		<?php for ( $i=1; $i<= Easy_instagram::$max_images; $i++ ): ?>
-		
+
 		<?php printf(
 			'<option value="%s"%s>%s</option>',
         		$i,
         		selected( $limit, $i, false ),
-        		$i ); 
-		?> 
-		
+        		$i );
+		?>
+
 		<?php endfor; ?>
 		</select>
 		</p>
 
 		<p>
-		<label for="<?php echo $this->get_field_id( 'caption_hashtags' ); ?>"><?php _e( 'Show Caption Hashtags:' ); ?></label> 
+		<label for="<?php echo $this->get_field_id( 'caption_hashtags' ); ?>"><?php _e( 'Show Caption Hashtags:' ); ?></label>
 		<select class="widefat" id="<?php echo $this->get_field_id( 'caption_hashtags' ); ?>" name="<?php echo $this->get_field_name( 'caption_hashtags' ); ?>">
 			<?php $selected = ( 'true' == $caption_hashtags ) ? 'selected="selected"' : ''; ?>
 			<option value="true" <?php echo $selected;?>><?php _e( 'Yes' ); ?></option>
-			
+
 			<?php $selected = ( 'false' == $caption_hashtags ) ? 'selected="selected"' : ''; ?>
 			<option value="false" <?php echo $selected;?>><?php _e( 'No' ); ?></option>
 		</select>
 		</p>
-		
+
 		<p>
-		<label for="<?php echo $this->get_field_id( 'caption_char_limit' ); ?>"><?php _e( 'Caption Character Limit (0 for no caption):' ); ?></label> 
+		<label for="<?php echo $this->get_field_id( 'caption_char_limit' ); ?>"><?php _e( 'Caption Character Limit (0 for no caption):' ); ?></label>
 		<input type='text' class="widefat" id="<?php echo $this->get_field_id( 'caption_char_limit' ); ?>" name="<?php echo $this->get_field_name( 'caption_char_limit' ); ?>" value="<?php _e( $caption_char_limit ); ?> " />
-		</p>		
+		</p>
+
+		<p>
+		<label for="<?php echo $this->get_field_id( 'author_text' ); ?>"><?php _e( 'Author Text:' ); ?></label>
+		<input type='text' class="widefat" id="<?php echo $this->get_field_id( 'author_text' ); ?>" name="<?php echo $this->get_field_name( 'author_text' ); ?>" value="<?php _e( $author_text ); ?> " />
+		</p>
+
+		<p>
+		<label for="<?php echo $this->get_field_id( 'thumb_click' ); ?>"><?php _e( 'On Thumbnail Click:' ); ?></label>
+		<select class="widefat" id="<?php echo $this->get_field_id( 'thumb_click' ); ?>" name="<?php echo $this->get_field_name( 'thumb_click' ); ?>">
+		<?php foreach ( Easy_Instagram::get_thumb_click_options() as $key => $value ): ?>
+			<?php $selected = ( $key == $thumb_click ) ? 'selected="selected"' : ''; ?>
+			<option value="<?php echo $key;?>" <?php echo $selected;?>><?php echo $value; ?></option>
+		<?php endforeach; ?>
+		</select>
+		</p>
+
+		<p>
+		<label for="<?php echo $this->get_field_id( 'time_text' ); ?>"><?php _e( 'Time Text:' ); ?></label>
+		<input type='text' class="widefat" id="<?php echo $this->get_field_id( 'time_text' ); ?>" name="<?php echo $this->get_field_name( 'time_text' ); ?>" value="<?php _e( $time_text ); ?> " />
+		</p>
+
+
+		<p>
+		<label for="<?php echo $this->get_field_id( 'time_format' ); ?>"><?php _e( 'Time Format:' ); ?></label>
+		<input type='text' class="widefat" id="<?php echo $this->get_field_id( 'time_format' ); ?>" name="<?php echo $this->get_field_name( 'time_format' ); ?>" value="<?php _e( $time_format ); ?> " />
+		</p>
 <?php
-		
+
 	}
 
 	//==========================================================================
@@ -1094,26 +1308,33 @@ class Easy_Instagram_Widget extends WP_Widget {
 		$instance['title']				= strip_tags( $new_instance['title'] );
 		$instance['type']				= strip_tags( $new_instance['type'] );
 		$instance['value']				= trim( strip_tags( $new_instance['value'] ) );
-		$instance['limit']				= strip_tags( $new_instance['limit'] );		
+		$instance['limit']				= strip_tags( $new_instance['limit'] );
 		$instance['caption_hashtags'] 	= $new_instance['caption_hashtags'];
 		$instance['caption_char_limit'] = (int) $new_instance['caption_char_limit'];
-
+		$instance['author_text']		= strip_tags( $new_instance['author_text'] );
+		$instance['thumb_click']		= $new_instance['thumb_click'];
+		$instance['time_text']			= strip_tags( $new_instance['time_text'] );
+		$instance['time_format']		= strip_tags( $new_instance['time_format'] );
 		return $instance;
 	}
 
 	//==========================================================================
-	
+
 	public function widget( $args, $instance ) {
 		extract( $args );
 
 		$title = apply_filters( 'widget_title', $instance['title'] );
-		
+
 		$tag = '';
 		$user_id = '';
 		$limit = 1;
 		$caption_hashtags = 'true';
 		$caption_char_limit = Easy_Instagram::$default_caption_char_limit;
-		
+		$author_text = Easy_Instagram::$default_author_text;
+		$thumb_click = '';
+		$time_text = Easy_Instagram::$default_time_text;
+		$time_format = Easy_Instagram::$default_time_format;
+
 		if ( 'tag' == $instance['type'] ) {
 			$tag = trim( $instance['value'] );
 			$user_id = '';
@@ -1122,14 +1343,14 @@ class Easy_Instagram_Widget extends WP_Widget {
 			$tag = '';
 			$user_id = $instance['value'];
 		}
-		
+
 		if ( isset( $instance['limit'] ) ) {
 			$limit = (int) $instance['limit'];
 			if ( $limit > Easy_Instagram::$max_images ) {
 				$limit = Easy_Instagram::$max_images;
 			}
 		}
-		
+
 		if ( isset( $instance['caption_hashtags'] ) ) {
 			$caption_hashtags = $instance['caption_hashtags'];
 		}
@@ -1138,17 +1359,33 @@ class Easy_Instagram_Widget extends WP_Widget {
 			$caption_char_limit = (int) $instance['caption_char_limit'];
 		}
 
-		$content = Easy_Instagram::generate_content( $tag, $user_id, $limit, $caption_hashtags, $caption_char_limit );
-		
+		if ( isset( $instance['author_text'] ) ) {
+			$author_text = $instance['author_text'];
+		}
+
+		if ( isset( $instance['thumb_click'] ) ) {
+			$thumb_click = $instance['thumb_click'];
+		}
+
+		if ( isset( $instance['time_text'] ) ) {
+			$time_text = $instance['time_text'];
+		}
+
+		if ( isset( $instance['time_format'] ) ) {
+			$time_format = $instance['time_format'];
+		}
+
+		$content = Easy_Instagram::generate_content( $tag, $user_id, $limit, $caption_hashtags, $caption_char_limit, $author_text, $thumb_click, $time_text, $time_format );
+
 		echo $before_widget;
-		
+
 		if ( ! empty( $title ) ) {
 			echo $before_title . $title . $after_title;
 		}
-				
+
 		echo $content;
-		
-		echo $after_widget;	
+
+		echo $after_widget;
 	}
 
 	//==========================================================================
