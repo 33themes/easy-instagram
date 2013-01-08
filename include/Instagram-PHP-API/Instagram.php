@@ -125,7 +125,16 @@ class MC_Instagram_Connector {
      * @return string
      */
     protected function _getHttpClientResponse() {
-        return $this->_httpClient->getResponse();
+		$response = $this->_httpClient->getResponse();
+
+		$response = trim( $response );
+
+		// When curl_redir_exec is used, CURLOPT_HEADER is set and the returned data contains the HTTP header
+		// Filter only the useful response
+		if( preg_match( '/^[^{]+{(.*)$/', $response, $matches ) ) {
+			$response = '{' . $matches[1];
+		}
+        return $response;
     }
 
     /**
@@ -140,6 +149,7 @@ class MC_Instagram_Connector {
         $this->_httpClient->setPostParam('redirect_uri', $this->_config['redirect_uri']);
         $this->_httpClient->setPostParam('code', $this->getAccessCode());
 
+		$response = $this->_getHttpClientResponse();
         $this->_oauthToken = $this->_getHttpClientResponse();
     }
 
