@@ -3,7 +3,7 @@ Contributors: VeloMedia
 Tags: Instagram, photos, gallery, images, widget, shortcode, hashtag
 Requires at least: 3.0.1
 Tested up to: 3.4.2
-Stable tag: 1.2.3
+Stable tag: 1.2.4
 
 
 Simply, quickly and easily, displays one or more Instagram images from a User ID
@@ -59,9 +59,9 @@ To Install "Easy Instagram"...
  1. Either - Download Velomedia's "Easy Instagram" Plugin from our website; unzip the file and drop the unzipped 'easy-instagram' folder into the .../wp-content/plugins/ directory. Or, on the Plugins panel in the WordPress CMS, press the 'Add New' button; then press 'Upload'; browse for the downloaded zip file, select it, press 'Open'; then press 'Install Now'.
 	Or, search for and download "Easy Instagram" from the WordPress repository found when pressing 'Add New' on the Plugins panel in WordPress.
  2. In the WordPress CMS, select the "Plugins" or "Installed Plugins" menu option. Under the "Easy Instagram" plugin entry, press 'Activate' to turn on the plugin.
- 
+
 **Register for your Instagram API client** *(see why you need to register an API client in this plugins FAQs)*
- 
+
  3. Open up a new browser window or tab and point it to http://instagram.com/developer/ ; then click the 'Login' link in the upper right corner.
  4. After you enter your Instagram login username and password, you will be taken to the 'Edit Profile' page, click the 'API' link on the page's footer to take you back to the .../developer/ page.
  5. Once you are back to the developers page, click the 'Register' link located in the 'Get Started' diagram.
@@ -76,20 +76,20 @@ To Install "Easy Instagram"...
                 * Client ID
                 * Client Secret
                 * Redirect URI
-				
-**Authorize your Instagram API client in WordPress**	
-				
+
+**Authorize your Instagram API client in WordPress**
+
  8. Back in your WordPress CMS, navigate to the new "Easy Instagram" panel, in the CMS menu under "Settings". Copy and paste the three fields from the Instagram “Manage Clients” panel over to the appropriate fields on the plugin Settings page.  Enter the desired cache expire time in minutes.  Then click the 'Save Settings' button.
  9. Under the "Instagram Account" heading, click the 'Instagram Login' link and authorize Easy Instagram to access your account by entering your Instagram username and password.
-	This process should return you back to the Easy Instagram Settings page in your WordPress CMS, where you will see your Instagram User ID.  
-	
+	This process should return you back to the Easy Instagram Settings page in your WordPress CMS, where you will see your Instagram User ID.
+
 	***This is the numerical ID you will use to create feeds of Instagram photos specifically from your Instagram photo account.***
 
 *The Easy Instagram plugin is now set up and ready to use on your website!*
 
 == Usage ==
 
-To create one or more Instagram photo feeds, use the Easy Instagram widget, or use the following shortcodes to generate an Instagram feed in the content area of a Post or Page. 
+To create one or more Instagram photo feeds, use the Easy Instagram widget, or use the following shortcodes to generate an Instagram feed in the content area of a Post or Page.
 By default the shortcode will display a single image.
 
 **Examples:**
@@ -124,13 +124,13 @@ For multiple photo feeds each using different hashtags or user ids, repeat the s
 
 = Why do I have to register for an Instagram API client with this plugin? =
 
-In order to display and feed Instagram photos through a website, someone must have registered an API client with Instagram. 
+In order to display and feed Instagram photos through a website, someone must have registered an API client with Instagram.
 
-There are many other Instagram plugins that use the same API key for thousands of installations.  
-Using that kind of plugin, you share the risk with all of the thousands of other plugin users that the plugin developer may disappear, may not keep the API key active, and effectively break your site feature without notice.  
+There are many other Instagram plugins that use the same API key for thousands of installations.
+Using that kind of plugin, you share the risk with all of the thousands of other plugin users that the plugin developer may disappear, may not keep the API key active, and effectively break your site feature without notice.
 You also risk the plugin developer eventually charging for their plugin, especially because they're providing an API registration service on which you've become dependent.
 
-The 'Easy Instagram' advantage is that only you (your website) and Instagram are involved, and that still -- you don't need to know any code whatsoever to complete the installation process.  
+The 'Easy Instagram' advantage is that only you (your website) and Instagram are involved, and that still -- you don't need to know any code whatsoever to complete the installation process.
 Basically involving a series of cuts-and-pastes, most people report having registered their API client in just a few minutes.
 
 = Can I use multiple shortcodes in the same page? =
@@ -199,6 +199,9 @@ Not at this time, but it's something we're working on for future versions.  Curr
 6. The WordPress widget settings where two widgets are placed in one sidebar (pre-v1.2.3).
 
 == Changelog ==
+
+= 1.2.4 =
+* Fix: On some servers, in the plugin settings, the admin cannot log in to Instagram
 
 = 1.2.3 =
 * New: Link image author display to their Instagram profile page

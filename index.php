@@ -3,7 +3,7 @@
 Plugin Name: Easy Instagram
 Plugin URI:
 Description: Display one or more Instagram images by user id or tag
-Version: 1.2.3
+Version: 1.2.4
 Author: VeloMedia
 Author URI: http://www.velomedia.com
 Licence:
@@ -12,7 +12,8 @@ Licence:
 require_once 'include/Instagram-PHP-API/Instagram.php';
 
 add_action( 'admin_menu', array( 'Easy_Instagram', 'admin_menu' ) );
-add_action( 'wp_enqueue_scripts', array( 'Easy_Instagram', 'init_scripts_and_styles' ) );
+add_action( 'init', array( 'Easy_Instagram', 'register_scripts_and_styles' ) );
+add_action( 'wp_footer', array( 'Easy_Instagram', 'enqueue_scripts_and_styles' ) );
 add_action( 'admin_init', array( 'Easy_Instagram', 'admin_init' ) );
 
 add_action( 'init', array( 'Easy_Instagram', 'init' ) );
@@ -40,6 +41,7 @@ class Easy_Instagram {
 	static $default_time_text = 'posted #T#'; //#T# will be replaced with the specified time_format
 	static $default_time_format = '#R#'; //Relative time
 
+	static $load_scripts_and_styles = FALSE;
 
 	static function get_thumb_click_options() {
 		return array(
@@ -64,14 +66,20 @@ class Easy_Instagram {
 
 	//=========================================================================
 
-	static function init_scripts_and_styles() {
+	static function register_scripts_and_styles() {
 		if ( ! is_admin() ) {
 			wp_register_style( 'Easy_Instagram', plugins_url( 'css/style.css', __FILE__ ) );
-			wp_enqueue_style( 'Easy_Instagram' );
+			//wp_enqueue_style( 'Easy_Instagram' );
 		}
 	}
 
 	//=========================================================================
+
+	static function enqueue_scripts_and_styles() {
+		if ( TRUE == self::$load_scripts_and_styles ) {
+			wp_enqueue_style( 'Easy_Instagram' );
+		}
+	}
 
 	static function admin_init() {
 		wp_register_style( 'Easy_Instagram_Admin', plugins_url( 'css/admin.css', __FILE__ ) );
@@ -459,6 +467,8 @@ class Easy_Instagram {
 	//=========================================================================
 
 	static function generate_content( $tag, $user_id, $limit, $caption_hashtags, $caption_char_limit, $author_text, $thumb_click, $time_text, $time_format ) {
+		self::$load_scripts_and_styles = TRUE;
+
 		if ( empty( $tag ) && empty( $user_id ) ) {
 			return '';
 		}
@@ -1353,6 +1363,47 @@ class Easy_Instagram_Widget extends WP_Widget {
 
 		if ( isset( $instance['caption_hashtags'] ) ) {
 			$caption_hashtags = $instance['caption_hashtags'];
+		}
+
+		if ( isset( $instance['caption_char_limit'] ) ) {
+			$caption_char_limit = (int) $instance['caption_char_limit'];
+		}
+
+		if ( isset( $instance['author_text'] ) ) {
+			$author_text = $instance['author_text'];
+		}
+
+		if ( isset( $instance['thumb_click'] ) ) {
+			$thumb_click = $instance['thumb_click'];
+		}
+
+		if ( isset( $instance['time_text'] ) ) {
+			$time_text = $instance['time_text'];
+		}
+
+		if ( isset( $instance['time_format'] ) ) {
+			$time_format = $instance['time_format'];
+		}
+
+		$content = Easy_Instagram::generate_content( $tag, $user_id, $limit, $caption_hashtags, $caption_char_limit, $author_text, $thumb_click, $time_text, $time_format );
+
+		echo $before_widget;
+
+		if ( ! empty( $title ) ) {
+			echo $before_title . $title . $after_title;
+		}
+
+		echo $content;
+
+		echo $after_widget;
+	}
+
+	//==========================================================================
+}
+
+
+add_action( 'widgets_init', create_function( '', 'register_widget( "Easy_Instagram_Widget" );' ) );
+ption_hashtags = $instance['caption_hashtags'];
 		}
 
 		if ( isset( $instance['caption_char_limit'] ) ) {
