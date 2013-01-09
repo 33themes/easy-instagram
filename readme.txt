@@ -3,7 +3,7 @@ Contributors: VeloMedia
 Tags: Instagram, photos, gallery, images, widget, shortcode, hashtag
 Requires at least: 3.0.1
 Tested up to: 3.4.2
-Stable tag: 1.2.4
+Stable tag: 1.2.5
 
 
 Simply, quickly and easily, displays one or more Instagram images from a User ID
@@ -199,6 +199,9 @@ Not at this time, but it's something we're working on for future versions.  Curr
 6. The WordPress widget settings where two widgets are placed in one sidebar (pre-v1.2.3).
 
 == Changelog ==
+
+= 1.2.5 =
+* Fix: Instagram login error
 
 = 1.2.4 =
 * Fix: On some servers, in the plugin settings, the admin cannot log in to Instagram

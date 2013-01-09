@@ -150,7 +150,7 @@ class MC_Instagram_Connector {
         $this->_httpClient->setPostParam('code', $this->getAccessCode());
 
 		$response = $this->_getHttpClientResponse();
-        $this->_oauthToken = $this->_getHttpClientResponse();
+        $this->_oauthToken = $response;
     }
 
     /**
