@@ -2,7 +2,7 @@
 Contributors: VeloMedia
 Tags: Instagram, photos, gallery, images, widget, shortcode, hashtag
 Requires at least: 3.0.1
-Tested up to: 3.5.0
+Tested up to: 3.4.2
 Stable tag: 1.2.5
 
 
@@ -195,8 +195,9 @@ Not at this time, but it's something we're working on for future versions.  Curr
 2. Your website when you’ve used the “Easy Instagram” widget to place an Instagram photo feed in a sidebar.
 3. The Instagram client registration form.
 4. The Instagram client registration response.
-5. The WordPress plugin settings page for “Easy Instagram”.
-6. The WordPress widget settings where two widgets are placed in one sidebar (pre-v1.2.3).
+5. Grant your website access to your Instagram data.
+6. The WordPress plugin settings page for "Easy Instagram".
+7. The "Easy Instagram" widget settings (v1.2.5).
 
 == Changelog ==
 
