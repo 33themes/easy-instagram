@@ -88,3 +88,20 @@ h2.ei-nav-tab-wrapper {
 	border-width: 1px;
 	color: #464646;
 }
+
+.ei-field-info {
+	color: #555;
+	font-size: 90%;
+}
+
+.ei-code {
+	font: 100% courier,monospace;
+	border: 1px solid #ccc; 
+	padding: 2px;
+	background: #fff7f0; 
+	color: #000	
+}
+
+td.exception {
+	color: #f00;
+}

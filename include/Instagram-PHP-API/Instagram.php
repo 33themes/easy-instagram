@@ -164,8 +164,13 @@ class MC_Instagram_Connector {
             if ($this->_oauthToken == null) {
                 $this->_setOauthToken();
             }
-
-            $this->_accessToken = json_decode($this->_oauthToken)->access_token;
+			
+			$decoded = json_decode($this->_oauthToken);
+			if ( isset( $decoded->code ) && isset( $decoded->error_message ) ) {
+				$exception_text = sprintf( 'Instagram error. Code [%s]. Message: [%s]', $decoded->code, $decoded->error_message );
+				throw new Exception( $exception_text );
+			}
+            $this->_accessToken = $decoded->access_token;
         }
 
         return $this->_accessToken;
