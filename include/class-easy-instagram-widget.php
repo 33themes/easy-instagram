@@ -5,6 +5,8 @@
 if ( ! defined( 'ABSPATH' ) ) exit;
 
 class Easy_Instagram_Widget extends WP_Widget {
+	private $easy_instagram = null;
+	private $defaults = array();
 
 	public function __construct() {
 		parent::__construct(
@@ -15,107 +17,57 @@ class Easy_Instagram_Widget extends WP_Widget {
 				'class' => 'easy-instagram-widget'
 			)
 		);
+
+		$this->easy_instagram = $GLOBALS['easy_instagram'];
+		$this->defaults = $this->easy_instagram->get_defaults();
 	}
 
 	//==========================================================================
 
  	public function form( $instance ) {
-		list( $username, $current_user_id ) = Easy_Instagram::get_instagram_user_data(); 
-	
-		if ( isset( $instance['title'] ) ) {
-			$title = $instance['title'];
-		}
-		else {
-			$title = '';
+		list( $username, $current_user_id ) = $this->easy_instagram->get_instagram_user_data();
+
+		$template = isset( $instance['template'] ) ? $instance['template'] : 'default';
+
+		$title = isset( $instance['title'] ) ? $instance['title'] : '';
+
+		$type = ( isset( $instance['type'] ) ) ? $instance['type'] : 'tag';
+
+		$value = ( isset( $instance['value'] ) ) ? $instance['value'] : '';
+
+		$limit = ( isset( $instance['limit'] ) ) ? $instance['limit'] : 1;
+
+		if ( $limit > $this->defaults['max_images'] ) {
+			$limit = $this->defaults['max_images'];
 		}
 
-		if ( isset( $instance['type'] ) ) {
-			$type = $instance['type'];
-		}
-		else {
-			$type = 'tag';
-		}
+		$caption_hashtags = ( isset( $instance['caption_hashtags'] ) ) ? $instance['caption_hashtags'] : 'true';
 
-		if ( isset( $instance['value'] ) ) {
-			$value = $instance['value'];
-		}
-		else {
-			$value = '';
-		}
+		$caption_char_limit = ( isset( $instance['caption_char_limit'] ) ) 
+			? $instance['caption_char_limit'] : $this->defaults['caption_char_limit'];
 
-		if ( isset( $instance['limit'] ) ) {
-			$limit = $instance['limit'];
-		}
-		else {
-			$limit = 1;
-		}
+		$author_text = ( isset( $instance['author_text'] ) ) ? $instance['author_text'] : $this->defaults['author_text'];
 
-		if ( $limit > Easy_Instagram::$max_images ) {
-			$limit = Easy_Instagram::$max_images;
-		}
+		$author_full_name = ( isset( $instance['author_full_name'] ) ) ? $instance['author_full_name'] : 'false';
 
+		$thumb_click = ( isset( $instance['thumb_click'] ) ) 
+			? $instance['thumb_click'] : $this->defaults['thumb_click'];
 
-		if ( isset( $instance['caption_hashtags'] ) ) {
-			$caption_hashtags = $instance['caption_hashtags'];
-		}
-		else {
-			$caption_hashtags = 'true';
-		}
+		$time_text = ( isset( $instance['time_text'] ) ) ? $instance['time_text'] : $this->defaults['time_text'];
 
-		if ( isset( $instance['caption_char_limit'] ) ) {
-			$caption_char_limit = $instance['caption_char_limit'];
-		}
-		else {
-			$caption_char_limit = Easy_Instagram::$default_caption_char_limit;
-		}
-
-		if ( isset( $instance['author_text'] ) ) {
-			$author_text = $instance['author_text'];
-		}
-		else {
-			$author_text = Easy_Instagram::$default_author_text;
-		}
-
-		if ( isset( $instance['author_full_name'] ) ) {
-			$author_full_name = $instance['author_full_name'];
-		}
-		else {
-			$author_full_name = 'false';
-		}
-
-		if ( isset( $instance['thumb_click'] ) ) {
-			$thumb_click = $instance['thumb_click'];
-		}
-		else {
-			$thumb_click = Easy_Instagram::$default_thumb_click;
-		}
-
-		if ( isset( $instance['time_text'] ) ) {
-			$time_text = $instance['time_text'];
-		}
-		else {
-			$time_text = Easy_Instagram::$default_time_text;
-		}
-
-
-		if ( isset( $instance['time_format'] ) ) {
-			$time_format = $instance['time_format'];
-		}
-		else {
-			$time_format = Easy_Instagram::$default_time_format;
-		}
+		$time_format = ( isset( $instance['time_format'] ) ) ? $instance['time_format'] : $this->defaults['time_format'];
 
 		if ( isset( $instance['thumb_size'] ) ) {
-            list( $w, $h ) = Easy_Instagram::get_thumb_size_from_params( $instance['thumb_size'] );
-            if ( $w < Easy_Instagram::$min_thumb_size || $h < Easy_Instagram::$min_thumb_size ) {
-                $thumb_size = Easy_Instagram::$default_thumb_size;
-            }
-            else {
-                $thumb_size = trim( $instance['thumb_size'] );
-            }
-        }
+			list( $w, $h ) = $this->easy_instagram->get_thumb_size_from_params( $instance['thumb_size'] );
+			if ( $w < $this->defaults['min_thumb_size'] || $h < $this->defaults['min_thumb_size'] ) {
+				$thumb_size = $this->defaults['thumb_size'];
+			}
+			else {
+				$thumb_size = trim( $instance['thumb_size'] );
+			}
+		}
 		else {
-			$thumb_size = Easy_Instagram::$default_thumb_size;
+			$thumb_size = $this->defaults['thumb_size'];
 		}
 
 ?>
@@ -144,13 +96,13 @@ class Easy_Instagram_Widget extends WP_Widget {
 		<p>
 		<label for="<?php echo $this->get_field_id( 'limit' ); ?>"><?php _e( 'Images Count:', 'Easy_Instagram' ); ?></label>
 		<select class="widefat" id="<?php echo $this->get_field_id( 'limit' ); ?>" name="<?php echo $this->get_field_name( 'limit' ); ?>">
-		<?php for ( $i=1; $i<= Easy_instagram::$max_images; $i++ ): ?>
+		<?php for ( $i=1; $i<= $this->defaults['max_images']; $i++ ): ?>
 
 		<?php printf(
 			'<option value="%s"%s>%s</option>',
-        		$i,
-        		selected( $limit, $i, false ),
-        		$i );
+				$i,
+				selected( $limit, $i, false ),
+				$i );
 		?>
 
 		<?php endfor; ?>
@@ -197,7 +149,7 @@ class Easy_Instagram_Widget extends WP_Widget {
 		<p>
 		<label for="<?php echo $this->get_field_id( 'thumb_click' ); ?>"><?php _e( 'On Thumbnail Click:', 'Easy_Instagram' ); ?></label>
 		<select class="widefat" id="<?php echo $this->get_field_id( 'thumb_click' ); ?>" name="<?php echo $this->get_field_name( 'thumb_click' ); ?>">
-		<?php foreach ( Easy_Instagram::get_thumb_click_options() as $key => $value ): ?>
+		<?php foreach ( $this->easy_instagram->get_thumb_click_options() as $key => $value ): ?>
 			<?php $selected = ( $key == $thumb_click ) ? 'selected="selected"' : ''; ?>
 			<option value="<?php echo $key;?>" <?php echo $selected;?>><?php echo $value; ?></option>
 		<?php endforeach; ?>
@@ -214,6 +166,12 @@ class Easy_Instagram_Widget extends WP_Widget {
 		<label for="<?php echo $this->get_field_id( 'time_format' ); ?>"><?php _e( 'Time Format:', 'Easy_Instagram' ); ?></label>
 		<input type='text' class="widefat" id="<?php echo $this->get_field_id( 'time_format' ); ?>" name="<?php echo $this->get_field_name( 'time_format' ); ?>" value="<?php _e( $time_format ); ?> " />
 		</p>
+		
+		<p>
+		<label for="<?php echo $this->get_field_id( 'template' ); ?>"><?php _e( 'Template:', 'Easy_Instagram' ); ?></label>
+		<input type='text' class="widefat" id="<?php echo $this->get_field_id( 'template' ); ?>" name="<?php echo $this->get_field_name( 'template' ); ?>" value="<?php _e( $template ); ?> " />
+		<span class='ei-field-info'><?php _e( 'See Easy Instagram help for details.', 'Easy_Instagram' ); ?></span>
+		</p>		
 <?php
 
 	}
@@ -233,7 +191,8 @@ class Easy_Instagram_Widget extends WP_Widget {
 		$instance['thumb_click']		= $new_instance['thumb_click'];
 		$instance['time_text']			= strip_tags( $new_instance['time_text'] );
 		$instance['time_format']		= strip_tags( $new_instance['time_format'] );
-        $instance['thumb_size']		    = strip_tags( $new_instance['thumb_size'] );
+		$instance['thumb_size']			= strip_tags( $new_instance['thumb_size'] );
+		$instance['template']			= trim( strip_tags( $new_instance['template'] ) );
 		return $instance;
 	}
 
@@ -248,13 +207,14 @@ class Easy_Instagram_Widget extends WP_Widget {
 		$user_id = '';
 		$limit = 1;
 		$caption_hashtags = 'true';
-		$caption_char_limit = Easy_Instagram::$default_caption_char_limit;
-		$author_text = Easy_Instagram::$default_author_text;
+		$caption_char_limit = $this->defaults['caption_char_limit'];
+		$author_text = $this->defaults['author_text'];
 		$author_full_name = 'false';
 		$thumb_click = '';
-		$time_text = Easy_Instagram::$default_time_text;
-		$time_format = Easy_Instagram::$default_time_format;
-        $thumb_size = Easy_Instagram::$default_thumb_size;
+		$time_text = $this->defaults['time_text'];
+		$time_format = $this->defaults['time_format'];
+		$thumb_size = $this->defaults['thumb_size'];
+		$template = $this->defaults['template'];
 
 		if ( 'tag' == $instance['type'] ) {
 			$tag = trim( $instance['value'] );
@@ -267,8 +227,8 @@ class Easy_Instagram_Widget extends WP_Widget {
 
 		if ( isset( $instance['limit'] ) ) {
 			$limit = (int) $instance['limit'];
-			if ( $limit > Easy_Instagram::$max_images ) {
-				$limit = Easy_Instagram::$max_images;
+			if ( $limit > $this->defaults['max_images'] ) {
+				$limit = $this->defaults['max_images'];
 			}
 		}
 
@@ -303,22 +263,27 @@ class Easy_Instagram_Widget extends WP_Widget {
 		if ( isset( $instance['thumb_size'] ) ) {
 			$thumb_size = $instance['thumb_size'];
 		}
+		
+		if ( isset( $instance['template'] ) ) {
+			$template = $instance['template'];
+		}
 
-        $params = array(
-            'tag'                => $tag,
-            'user_id'            => $user_id,
-            'limit'              => $limit,
-            'caption_hashtags'   => $caption_hashtags,
-            'caption_char_limit' => $caption_char_limit, 
-            'author_text'        => $author_text,
-			'author_full_name'   => $author_full_name, 
-            'thumb_click'        => $thumb_click, 
-            'time_text'          => $time_text, 
-            'time_format'        => $time_format,
-            'thumb_size'         => $thumb_size
-        );
+		$params = array(
+			'tag'				 => $tag,
+			'user_id'			 => $user_id,
+			'limit'				 => $limit,
+			'caption_hashtags'	 => $caption_hashtags,
+			'caption_char_limit' => $caption_char_limit,
+			'author_text'		 => $author_text,
+			'author_full_name'	 => $author_full_name,
+			'thumb_click'		 => $thumb_click,
+			'time_text'			 => $time_text,
+			'time_format'		 => $time_format,
+			'thumb_size'		 => $thumb_size,
+			'template'			 => $template,
+		);
 
-		$content = Easy_Instagram::generate_content( $params );
+		$content = $this->easy_instagram->generate_content( $params );
 
 		echo $before_widget;
 

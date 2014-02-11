@@ -1,135 +1,467 @@
 <?php
+// [todo] - Video play option - default thickbox
 
 if ( ! defined( 'ABSPATH' ) ) exit;
 
-require_once 'class-easy-instagram-utils.php';
-require_once 'class-easy-instagram-cache.php';
+require 'class-easy-instagram-utils.php';
+require 'class-easy-instagram-cache.php';
 
 class Easy_Instagram {
-	static $max_images = 10;
-	static $default_caption_char_limit = 100;
-	static $default_author_text = 'by %s';
-	static $default_thumb_click = '';
-	static $default_time_text = 'posted #T#'; //#T# will be replaced with the specified time_format
-	static $default_time_format = '#R#'; //Relative time
-    static $default_thumb_size = ''; //Leave empty for default Instagram thumb size
-    static $min_thumb_size = 10;
+	protected $defaults = array();
+	protected $cache = null;
 
-	static $load_scripts_and_styles = FALSE;
+	protected $load_scripts_and_styles = false;
 
-	static function get_thumb_click_options() {
+	public function __construct() {
+		$this->cache = new Easy_Instagram_Cache();
+
+		$this->defaults = array(
+			'max_images' => 20,
+			'caption_char_limit' => 100,
+			'author_text' => __( 'by %s', 'Easy_Instagram' ),
+			'thumb_click' => '',
+			'time_text' => __( 'posted #T#', 'Easy_Instagram' ), // #T# will be replaced with the specified time_format
+			'time_format' => __( '#R#', 'Easy_Instagram' ), // Relative time
+			'thumb_size' => '', // Leave empty for default Instagram thumb size
+			'min_thumb_size' => 10,
+			'minimum_cache_expire_minutes' => 10,
+			'template' => 'default',
+		);
+
+		add_action( 'admin_menu', array( $this, 'admin_menu' ) );
+		add_action( 'init', array( $this, 'init' ) );
+		add_action( 'init', array( $this, 'register_scripts_and_styles' ) );
+		add_action( 'wp_footer', array( $this, 'enqueue_scripts_and_styles' ) );
+		add_action( 'admin_init', array( $this, 'admin_init' ) );
+
+		add_action( 'wp_ajax_easy_instagram_content', array( $this, 'generate_content_ajax' ) );
+		add_action( 'wp_ajax_nopriv_easy_instagram_content', array( $this, 'generate_content_ajax' ) );
+
+		add_action( 'easy_instagram_clear_cache_event', array( $this, 'clear_cache_event_action' ) );
+
+		add_shortcode( 'easy-instagram', array( $this, 'shortcode' ) );
+	}
+
+	public function init() {
+		add_thickbox();
+	}
+
+	public function get_defaults() {
+		return $this->defaults;
+	}
+
+	public function get_thumb_click_options() {
 		return array(
 			''			=> __( 'Do Nothing', 'Easy_Instagram' ),
 			'thickbox'	=> __( 'Show in Thickbox', 'Easy_Instagram' ) ,
+			'colorbox'	=> __( 'Show in Colorbox', 'Easy_Instagram' ),
 			'original'	=> __( 'Show original in a new tab', 'Easy_Instagram' )
 		);
 	}
 
 	//=========================================================================
 
-	static function admin_menu() {
-		add_submenu_page(
-			'options-general.php',
+	public function admin_menu() {
+		add_options_page(
 			__( 'Easy Instagram', 'Easy_Instagram' ),
 			__( 'Easy Instagram', 'Easy_Instagram' ),
 			'manage_options',
 			'easy-instagram',
-			array( 'Easy_Instagram', 'admin_page' )
-		);
+			array( $this, 'admin_settings_page' ) );
+	}
+
+	//=========================================================================
+	public function admin_settings_page() {
+		if ( ! current_user_can( 'manage_options' ) ) {
+			wp_die( __( 'You do not have sufficient permissions to access this page.', 'Easy_Instagram') );
+		}
+
+		$easy_instagram = $this;
+		include 'views/admin-settings.php';
 	}
 
 	//=========================================================================
 
-	static function register_scripts_and_styles() {
+	function register_scripts_and_styles() {
 		if ( ! is_admin() ) {
-			wp_register_style( 'Easy_Instagram', plugins_url( 'css/style.css', dirname( __FILE__ ) ) );
-			wp_register_script( 'Easy_Instagram', plugins_url( 'js/main.js', dirname( __FILE__ ) ) );
-			
-			$after_ajax_content_load = self::get_general_setting( 'after_ajax_content_load' );
-			wp_localize_script( 'Easy_Instagram', 'Easy_Instagram_Settings', 
+			wp_register_style( 'easy-instagram', plugins_url( 'assets/css/style.min.css', dirname( __FILE__ ) ) );
+			wp_register_style( 'colorbox', plugins_url( 'assets/colorbox/colorbox.css', dirname( __FILE__ ) ) );
+			wp_register_style( 'video-js', plugins_url( 'assets/video-js/video-js.css', dirname( __FILE__ ) ) );
+
+			wp_register_script( 'colorbox', plugins_url( 'assets/colorbox/jquery.colorbox-min.js', dirname( __FILE__ ) ), array( 'jquery' ) );
+			wp_register_script( 'video-js', plugins_url( 'assets/video-js/video.js', dirname( __FILE__ ) ), array( 'jquery' ) );
+			wp_register_script( 'easy-instagram', plugins_url( 'assets/js/main.min.js', dirname( __FILE__ ) ), array( 'jquery', 'colorbox', 'video-js' ) );
+
+			$after_ajax_content_load = get_option( 'easy_instagram_after_ajax_content_load' );
+			wp_localize_script( 'easy-instagram', 'Easy_Instagram_Settings',
 				array(
-					'ajaxurl'                 => admin_url( 'admin-ajax.php' ), 
-					'after_ajax_content_load' => $after_ajax_content_load 
-				) 
-			);  
+					'ajaxurl' => admin_url( 'admin-ajax.php' ),
+					'after_ajax_content_load' => $after_ajax_content_load,
+					'videojs_flash_swf_url' => plugins_url( 'assets/video-js/video-js.swf', dirname( __FILE__ ) )
+				)
+			);
 		}
 	}
 
 	//=========================================================================
 
-	static function enqueue_scripts_and_styles() {
-		if ( true == self::$load_scripts_and_styles ) {
-			wp_enqueue_style( 'Easy_Instagram' );
-			wp_enqueue_script( 'Easy_Instagram' );
+	public function plugin_action_links( $links ) {
+		$links[] = '<a href="' . admin_url( 'options-general.php?page=easy-instagram' ) . '">'.__( 'Settings', 'Easy_Instagram' ).'</a>';
+		return $links;
+	}
+
+	//=========================================================================
+
+	public function enqueue_scripts_and_styles() {
+		if ( true == $this->load_scripts_and_styles ) {
+			wp_enqueue_style( 'easy-instagram' );
+			wp_enqueue_style( 'colorbox' );
+			wp_enqueue_style( 'video-js' );
+
+			wp_enqueue_script( 'easy-instagram' );
+			wp_enqueue_script( 'colorbox' );
+			wp_enqueue_script( 'video-js' );
 		}
 	}
 
 	//=========================================================================
 
-    static function admin_init() {
-        wp_register_style( 'Easy_Instagram_Admin', plugins_url( 'css/admin.css', dirname( __FILE__ ) ) );
+	public function admin_init() {
+		wp_register_style( 'Easy_Instagram_Admin', plugins_url( 'assets/css/admin.min.css', dirname( __FILE__ ) ) );
 		wp_enqueue_style( 'Easy_Instagram_Admin' );
+
+		add_settings_section(
+			'easy_instagram_general_settings',
+			__( 'General Settings', 'Easy_Instagram' ),
+			array( $this, 'easy_instagram_general_settings_callback'),
+			'easy_instagram_general'
+		);
+
+		add_settings_section(
+			'easy_instagram_account_section',
+			__( 'Instagram Account', 'Easy_Instagram' ),
+			array( $this, 'easy_instagram_account_callback' ),
+			'easy_instagram_account'
+		);
+
+		add_settings_section(
+			'easy_instagram_help_section',
+			__( 'Help', 'Easy_Instagram' ),
+			array( $this, 'easy_instagram_help_callback' ),
+			'easy_instagram_help'
+		);
+
+			// Fields
+		add_settings_field(
+			'easy_instagram_client_id',
+			__( 'Application Client ID', 'Easy_Instagram' ),
+			array( $this, 'text_field_callback' ),
+			'easy_instagram_general',
+			'easy_instagram_general_settings',
+			array(
+				'field' => 'easy_instagram_client_id',
+				'description' => __( 'This is the ID of your Instagram application', 'Easy_Instagram' )
+			)
+		);
+
+		add_settings_field(
+			'easy_instagram_client_secret',
+			__( 'Application Client Secret', 'Easy_Instagram' ),
+			array( $this, 'text_field_callback' ),
+			'easy_instagram_general',
+			'easy_instagram_general_settings',
+			array(
+				'field' => 'easy_instagram_client_secret',
+				'description' => __( 'This is your Instagram application secret', 'Easy_Instagram' )
+			)
+		);
+
+		add_settings_field(
+			'easy_instagram_cache_expire_time',
+			__( 'Cache Expire Time (minutes)', 'Easy_Instagram' ),
+			array( $this, 'cache_time_callback' ),
+			'easy_instagram_general',
+			'easy_instagram_general_settings',
+			array(
+				'field' => 'easy_instagram_cache_expire_time',
+				'description' =>  sprintf( __( 'Minimum expire time: %d minutes.', 'Easy_Instagram' ), $this->defaults['minimum_cache_expire_minutes'] )
+			)
+		);
+
+		add_settings_field(
+			'easy_instagram_cache_dir_option',
+			__( 'Cache Directory', 'Easy_Instagram' ),
+			array( $this, 'radio_field_callback'),
+			'easy_instagram_general',
+			'easy_instagram_general_settings',
+			array(
+				'field' => 'easy_instagram_cache_dir_option'
+			)
+		);
+
+
+		add_settings_field(
+			'easy_instagram_after_ajax_content_load',
+			__( 'Extra JS to run after AJAX Easy Instagram content load', 'Easy_Instagram' ),
+			array( $this, 'textarea_field_callback'),
+			'easy_instagram_general',
+			'easy_instagram_general_settings',
+			array(
+				'field' => 'easy_instagram_after_ajax_content_load',
+				'description' => __( 'Deprecated. Use "jQuery(document).on(\'afterEasyInstagramLoad\', your_js_handler);" in your theme instead.', 'Easy_Instagram' )
+				)
+		);
+
+
+		register_setting( 'easy_instagram_group', 'easy_instagram_client_id', array( $this, 'id_field_validate' ) );
+		register_setting( 'easy_instagram_group', 'easy_instagram_client_secret', array( $this, 'secret_field_validate' ) );
+		register_setting( 'easy_instagram_group', 'easy_instagram_cache_expire_time', array( $this, 'cache_expire_time_sanitize' ) );
+		register_setting( 'easy_instagram_group', 'easy_instagram_cache_dir_option', array($this, 'cache_dir_option_validate' ) );
+		register_setting( 'easy_instagram_group', 'easy_instagram_after_ajax_content_load', array( $this, 'text_field_validate' ) );
 
 		global $pagenow;
 		if ( 'options-general.php' == $pagenow ) {
-            wp_register_script( 'Easy_Instagram_Admin', plugins_url( 'js/admin.js', dirname( __FILE__ ) ) );
+			wp_register_script( 'Easy_Instagram_Admin', plugins_url( 'assets/js/admin.js', dirname( __FILE__ ) ) );
 			wp_enqueue_script( 'Easy_Instagram_Admin' );
 		}
 	}
-
 	//=========================================================================
 
-	static function init() {
-		add_thickbox();
+	public function easy_instagram_general_settings_callback() {
 	}
 
 	//=========================================================================
 
-	static function set_instagram_settings( $client_id, $client_secret, $redirect_uri = '' ) {
-		update_option( 'easy_instagram_client_id', $client_id );
-		update_option( 'easy_instagram_client_secret', $client_secret );
-		if ( '' != $redirect_uri ) {
-			update_option( 'easy_instagram_redirect_uri', $redirect_uri );
+	public function easy_instagram_account_callback() {
+		_e( 'Instagram Account', 'Easy_Instagram' );
+	}
+
+	//=========================================================================
+
+	public function easy_instagram_help_callback() {
+		$this->print_help_page();
+	}
+
+	//=========================================================================
+	public function text_field_callback( $args ) {
+		$field = $args['field'];
+		$value = get_option( $field );
+		
+		printf( '<input type="text" name="%s" id="%s" class="regular-text" value="%s" />', 
+			esc_html( $field ), esc_html( $field ), esc_html( $value ) );
+
+		if ( isset( $args['description'] ) ) {
+			printf( '<p class="description">%s</p>', esc_html( $args['description'] ) );
 		}
 	}
 
 	//=========================================================================
+	public function cache_time_callback( $args ) {
+		$field = $args['field'];
+		$value = get_option( $field, $this->defaults['minimum_cache_expire_minutes'] );
+		
+		printf( '<input type="text" name="%s" id="%s" class="regular-text" value="%s" />', 
+			esc_html( $field ), esc_html( $field ), esc_html( $value ) );
 
-	static function get_instagram_settings() {
+		if ( isset( $args['description'] ) ) {
+			printf( '<p class="description">%s</p>', esc_html( $args['description'] ) );
+		}
+	}
+
+	//=========================================================================
+	public function radio_field_callback( $args ) {
+		$field =  $args['field'];
+		$value = get_option( $field, 'default' );
+		
+		printf( '<input type="radio" name="%s" id="%s-default" class="radio-button" value="default" %s />', 
+			esc_html( $field ), esc_html( $field ), checked('default', $value, false ) );
+		printf( '<label for="%s-default">%s</label><br>', esc_html( $field ), __( 'Default', 'Easy_Instagram' ) );
+
+		printf( '<input type="radio" name="%s" id="%s-uploads" class="radio-button" value="uploads" %s />', 
+			esc_html( $field ), esc_html( $field ), checked( 'uploads', $value, false ) );
+		printf('<label for="%s-uploads">%s</label>', esc_html( $field ), __( 'Uploads', 'Easy_Instagram' ) );
+	
+		if ( isset( $args['description'] ) ) {
+			printf( '<p class="description">%s</p>', esc_html( $args['description'] ) );
+		}
+	}
+
+	//=========================================================================
+	public function textarea_field_callback( $args ) {
+		$field = $args['field'];
+		$value = get_option( $field );
+		
+		printf( '<textarea name="%s" id="%s" />%s</textarea>', 
+			esc_html( $field ), esc_html( $field ), esc_html( $value ) );
+		
+		if ( isset( $args['description'] ) ) {
+			printf( '<p class="description">%s</p>', esc_html( $args['description'] ) );
+		}
+	}
+
+
+	//=========================================================================
+	public function cache_expire_time_sanitize( $field ) {
+		return max(
+			array( absint( $field ), $this->defaults['minimum_cache_expire_minutes'] ) );
+	}
+
+
+	//=========================================================================
+	public function id_field_validate( $field ) {
+		$output = get_option( $field );
+		if ( !empty( $field ) ) {
+			$output = trim( $field );
+		} else {
+			$message = __( 'Please enter your Instagram client id', 'Easy_Instagram' );
+			add_settings_error( 'easy-instagram', 'empty-id', $message );
+		}
+		return $output;
+	}
+
+
+	//=========================================================================
+	public function secret_field_validate( $field ) {
+		$output = get_option( $field );
+		if ( !empty( $field ) ) {
+			$output = trim( $field );
+		} else {
+			$message = __( 'Please enter your Instagram client secret', 'Easy_Instagram' );
+			add_settings_error( 'easy-instagram', 'empty-secret', $message );
+		}
+		return $output;
+	}
+
+	//=========================================================================
+
+	public function get_cache_directory() {
+		return get_option( 'easy_instagram_cache_dir_path', $this->cache->get_default_cache_path() );
+	}
+
+	/**
+	 * Check if the default cache directory exists and is writable.
+	 *
+	 * @return string Cache directory type.
+	 */
+	private function validate_default_cache_directory() {
+		$cache_directory = $this->cache->get_default_cache_path();
+		
+		if ( ! file_exists( $cache_directory ) || ! is_dir( $cache_directory ) ) {
+			$error_message = sprintf( __( 'The cache directory [%s] does not exist.', 'Easy_Instagram' ), $cache_directory );
+		}
+		else if ( ! is_writable( $cache_directory ) ) {
+			$error_message = sprintf( __( 'Cannot write to the cache directory [%s].', 'Easy_Instagram' ), $cache_directory );
+		}
+		if ( isset( $error_message ) ) {
+			add_settings_error( 'easy-instagram', 'cache-directory-error', $error_message , 'error' );
+		}
+		
+		$this->set_default_cache_settings();
+		return 'default';
+	}
+	
+	/**
+	 * Check if the uploads cache directory exists, otherwise try to create it.
+	 *
+	 * @return string Cache directory type.
+	 */
+	private function validate_uploads_cache_directory() {
+		$output = 'default';
+		
+		$upload_d = wp_upload_dir();
+		
+		if ( false === $upload_d['error'] ) {
+			// Uploads directory found.
+			$cache_directory_name = $this->cache->get_cache_directory_name();
+			
+			$cache_directory = sprintf( '%s/easy-instagram-%s', $upload_d['basedir'], $cache_directory_name );
+			$cache_url = sprintf( '%s/easy-instagram-%s', $upload_d['baseurl'], $cache_directory_name );
+			
+			if ( ! file_exists( $cache_directory ) || ! is_dir( $cache_directory ) ) {
+				// Try to create the cache directory.
+				if ( wp_mkdir_p( $cache_directory ) ) {
+					chmod( $cache_directory, 0777 );
+				}
+				else {
+					$error_message = sprintf( __( 'Cannot create the cache directory [%s].', 'Easy_Instagram' ), $cache_directory );
+				}
+			}
+			
+			if ( is_dir( $cache_directory ) && ! is_writable( $cache_directory ) ) {
+				$error_message = sprintf( __( 'Cannot write to the cache directory [%s].', 'Easy_Instagram' ), $cache_directory );
+			}
+		} 
+		else {
+			$error_message = $upload_d['error'];
+		}
+		
+		if ( isset( $error_message ) ) {
+			add_settings_error( 'easy-instagram', 'cache-directory-error', $error_message , 'error' );
+			$this->set_default_cache_settings();
+			$output = 'default';
+		}
+		else {
+			update_option( 'easy_instagram_cache_dir_path', $cache_directory );
+			update_option( 'easy_instagram_cache_dir_url', $cache_url );
+			$output = 'uploads';
+		}
+
+		return $output;
+	}
+
+	/**
+	 * Verify if the selected cache directory exists and it is writable.
+	 *
+	 * @param string Cache directory type, default or uploads.
+	 * @return string Cache directory type.
+	 */
+	public function cache_dir_option_validate( $field ) {
+		$default_cache_path = $this->cache->get_default_cache_path();
+		$output = $field;
+		
+		switch ( $field ) {
+			case 'default':
+				$output = $this->validate_default_cache_directory();
+				break;
+				
+			case 'uploads':
+				$output = $this->validate_uploads_cache_directory();
+				break;
+				
+			default:
+				$output = 'default';
+				break;
+		}
+		return $output;
+	}
+	
+	//=========================================================================
+	private function set_default_cache_settings() {
+		update_option( 'easy_instagram_cache_dir_path', $this->cache->get_default_cache_path() );
+		update_option( 'easy_instagram_cache_dir_url', $this->cache->get_default_cache_url() );
+	}
+
+	//=========================================================================
+	public function text_field_validate( $field ) {
+		$output = trim( $field );
+		return $output;
+		//return apply_filters( 'text_field_validate', $output, $field );
+	}
+
+	//=========================================================================
+
+	public function get_instagram_settings() {
 		$client_id = get_option( 'easy_instagram_client_id' );
 		$client_secret = get_option( 'easy_instagram_client_secret' );
-		
-		$default_redirect_uri = admin_url( 'options-general.php?page=easy-instagram' );
-		$redirect_uri = get_option( 'easy_instagram_redirect_uri', $default_redirect_uri );
+
+		$redirect_uri = admin_url( 'options-general.php?page=easy-instagram' );
 		return array( $client_id, $client_secret, $redirect_uri );
 	}
 
 	//=========================================================================
-		
-	static function set_general_settings( $settings ) {
-		update_option( 'easy_instagram_general_settings', $settings );
-	}
 
-	//=========================================================================
-	
-	static function get_general_settings() {
-		return get_option( 'easy_instagram_general_settings', array() );
-	}
-
-	//=========================================================================
-	
-	static function get_general_setting( $key ) {
-		$settings = self::get_general_settings();
-		if ( isset ( $settings[$key] ) ) {
-			return $settings[$key];
-		}
-		return NULL;
-	}
-	
-	//=========================================================================
-
-	static function get_instagram_config() {
-		list( $client_id, $client_secret, $redirect_uri ) = self::get_instagram_settings();
+	public function get_instagram_config() {
+		list( $client_id, $client_secret, $redirect_uri ) = $this->get_instagram_settings();
 
 		return array(
 			'client_id' 	=> $client_id,
@@ -141,290 +473,21 @@ class Easy_Instagram {
 
 	//=========================================================================
 
-	static function admin_page() {
-		if ( isset( $_POST['ei_general_settings'] ) &&
-				check_admin_referer( 'ei_general_settings_nonce', 'ei_general_settings_nonce' ) ) {
-
-			$errors = array();
-
-			$instagram_client_id = isset( $_POST['ei_client_id'] )
-				? trim( $_POST['ei_client_id'] )
-				: '';
-
-			$instagram_client_secret = isset( $_POST['ei_client_secret'] )
-				? trim( $_POST['ei_client_secret'] )
-				: '';
-			
-			if ( isset( $_POST['ei_redirect_uri'] ) ) {
-				$instagram_redirect_uri = trim( $_POST['ei_redirect_uri'] );
-			}
-
-			if ( empty( $instagram_client_id ) ) {
-				$errors['client_id'] = __( 'Please enter your Instagram client id', 'Easy_Instagram' );
-			}
-
-			if ( empty( $instagram_client_secret ) ) {
-				$errors['client_secret'] = __( 'Please enter your Instagram client secret', 'Easy_Instagram' );
-			}
-
-			if ( empty( $errors ) ) {
-				self::set_instagram_settings( $instagram_client_id, $instagram_client_secret, $instagram_redirect_uri );
-			}
-
-			$cache_expire_time = isset( $_POST['ei_cache_expire_time'] )
-				? (int) $_POST['ei_cache_expire_time']
-				: 0;
-
-			if ( $cache_expire_time < Easy_Instagram_Cache::$minimum_cache_expire_minutes ) {
-				$cache_expire_time = Easy_Instagram_Cache::$minimum_cache_expire_minutes;
-			}
-			
-			Easy_Instagram_Cache::set_refresh_minutes( $cache_expire_time );
-		
-			$settings = self::get_general_settings();
-			$after_ajax_content_load = isset( $_POST['ei_after_ajax_content_load'] )
-				? trim( $_POST['ei_after_ajax_content_load'] )
-				: '';
-			$settings['after_ajax_content_load'] = $after_ajax_content_load;
-			self::set_general_settings( $settings );
-		}
-		else {
-			$after_ajax_content_load = self::get_general_setting( 'after_ajax_content_load' );
-		}
-
-		list( $instagram_client_id, $instagram_client_secret, $instagram_redirect_uri )
-			= self::get_instagram_settings();
-		
-		$logout_requested = false;
-		if ( isset( $_POST['instagram-logout'] )
-				&& check_admin_referer( 'ei_user_logout_nonce', 'ei_user_logout_nonce' ) ) {
-			self::set_access_token( '' );
-			update_option( 'ei_access_token', '' );
-			$logout_requested = true;
-		}
-
-
-		$config = self::get_instagram_config();
-		$instagram = new MC_Instagram_Connector( $config );
-		$access_token = self::get_access_token();
-		$cache_dir = Easy_Instagram_Cache::get_cache_dir();
-		$cache_expire_time = Easy_Instagram_Cache::get_refresh_minutes();
-		$instagram_exception = NULL;
-		
-		if ( ! $logout_requested && empty ( $access_token ) ) {
-			if ( isset( $_GET['code'] ) ) {
-				try {
-					$access_token = $instagram->getAccessToken();
-					if ( ! empty( $access_token ) ) {
-						self::set_access_token( $access_token );
-					}
-
-					$instagram_user = $instagram->getCurrentUser();
-					if ( ! empty( $instagram_user ) ) {
-						self::set_instagram_user_data( $instagram_user->username, $instagram_user->id );
-					}
-				} catch ( Exception $ex ) {
-					$instagram_exception = $ex;
-				}
-			}
-		}
-?>
-	<div id="icon-options-general" class="icon32"></div>
-	<h2><?php _e( 'Easy Instagram', 'Easy_Instagram' ) ?></h2>
-
-	<h2 class='ei-nav-tab-wrapper'>
-	<a href='#' class='ei-nav-tab ei-nav-tab-active' id='ei-select-general-settings'><?php _e( 'Plugin Settings', 'Easy_Instagram' ); ?></a>
-	<a href='#' class='ei-nav-tab' id='ei-select-help'><?php _e( 'Help', 'Easy_Instagram' ); ?></a>
-	</h2>
-
-	<div id='ei-general-settings'>
-	<form method='POST' action='' class='easy-instagram-settings-form'>
-
-		<table class='easy-instagram-settings'>
-			<?php if ( !is_writable( $cache_dir ) ): ?>
-				<tr class='warning'>
-					<td colspan='2'>
-						<?php printf( __( 'The directory %s is not writable !', 'Easy_Instagram' ), $cache_dir ); ?>
-					</td>
-				</tr>
-			<?php endif; ?>
-
-			<tr>
-				<td colspan='2'><h3><?php _e( 'General Settings', 'Easy_Instagram' ); ?></h3></td>
-			</tr>
-			<tr>
-				<td class='labels'>
-					<label for='ei-client-id'><?php _e( 'Application Client ID', 'Easy_Instagram' ); ?></label>
-				</td>
-				<td>
-					<input type='text' name='ei_client_id' id='ei-client-id' value='<?php echo esc_html( $instagram_client_id ); ?>' />
-					<br />
-					<?php if ( isset( $errors['client_id'] ) ): ?>
-						<div class='form-error'><?php echo $errors['client_id']; ?></div>
-					<?php endif; ?>
-
-					<span class='info'><?php _e( 'This is the ID of your Instagram application', 'Easy_Instagram' ); ?></span>
-				</td>
-			</tr>
-
-			<tr>
-				<td class='labels'>
-					<label for='ei-client-secret'><?php _e( 'Application Client Secret', 'Easy_Instagram' ); ?></label>
-				</td>
-				<td>
-					<input type='text' name='ei_client_secret' id='ei-client-secret' value='<?php echo esc_html( $instagram_client_secret ); ?>' />
-					<br />
-					<?php if ( isset( $errors['client_secret'] ) ): ?>
-						<div class='form-error'><?php echo $errors['client_secret']; ?></div>
-					<?php endif; ?>
-
-					<span class='info'><?php _e( 'This is your Instagram application secret', 'Easy_Instagram' ); ?></span>
-				</td>
-			</tr>
-
-			<tr>
-				<td class='labels'>
-					<label for='ei-redirect-uri'><?php _e( 'Application Redirect URI', 'Easy_Instagram' ); ?></label>
-				</td>
-				<td>
-					<input type='text' name='ei_redirect_uri' id='ei-redirect-uri' value='<?php echo esc_html( $instagram_redirect_uri ); ?>' />
-					<br />
-					<?php if ( isset( $errors['redirect_uri'] ) ): ?>
-						<div class='form-error'><?php echo $errors['redirect_uri']; ?></div>
-					<?php endif; ?>
-					<span class='info'><?php _e( 'This is your Instagram application redirect URI.', 'Easy_Instagram' ); ?></span>
-				</td>
-			</tr>
-
-			<tr>
-				<td class='labels'>
-					<label for='ei-cache-expire-time'><?php _e( 'Cache Expire Time (minutes)', 'Easy_Instagram' ); ?></label>
-				</td>
-				<td>
-					<input type='text' name='ei_cache_expire_time' id='ei-cache-expire-time' value='<?php echo esc_html( $cache_expire_time ); ?>' />
-					<br />
-					<span class='info'>
-						<?php printf( __( 'Minimum expire time: %d minutes.',
-											'Easy_Instagram' ),
-										Easy_Instagram_Cache::$minimum_cache_expire_minutes ); ?>
-					</span>
-				</td>
-			</tr>
-
-			<tr>
-				<td class='labels'>
-					<label for='ei-after-ajax-content-load'><?php _e( 'Extra JS to run after AJAX Easy Instagram content load', 'Easy_Instagram' ); ?></label>
-				</td>
-				<td>
-					<textarea name='ei_after_ajax_content_load' id='ei-after-ajax-content-load'><?php echo esc_html( $after_ajax_content_load ); ?></textarea>
-					<br />
-					<span class='info'>EXPERIMENTAL. Use with caution, it might break your site.</span>
-				</td>
-			</tr>
-			
-			<tr>
-				<td>
-					<input type='hidden' name='ei_general_settings' value='1' />
-					<?php wp_nonce_field( 'ei_general_settings_nonce', 'ei_general_settings_nonce' ); ?>
-				</td>
-				<td>
-					<input type='submit' value='<?php _e( "Save Settings" , "Easy_Instagram" ) ?>' name='submit' />
-				</td>
-			</tr>
-
-		</table>
-	</form>
-
-	<form method='POST' action='' class='easy-instagram-settings-form'>
-		<table class='easy-instagram-settings'>
-		<?php if ( empty( $access_token ) ) : ?>
-			<tr>
-				<td colspan='2'><h3><?php _e( 'Instagram Account', 'Easy_Instagram' ); ?></h3></td>
-			</tr>
-
-			<tr>
-				<td>
-					<?php if ( !empty( $instagram_client_id )
-						&& !empty( $instagram_client_secret )
-						&& ! empty( $instagram_redirect_uri ) ): ?>
-						<?php $authorization_url = $instagram->getAuthorizationUrl(); ?>
-						<a href="<?php echo $authorization_url;?>"><?php _e( 'Instagram Login', 'Easy_Instagram' );?></a>
-					<?php else: ?>
-						<?php _e( 'Please configure the General Settings first', 'Easy_Instagram' ); ?>
-					<?php endif; ?>
-				</td>
-				<td>
-				</td>
-			</tr>
-		<?php else: ?>
-			<?php list( $username, $user_id ) = self::get_instagram_user_data(); ?>
-				<tr>
-					<td colspan='2'><h3><?php _e( 'Instagram Account', 'Easy_Instagram' ); ?></h3></td>
-				</tr>
-				<tr>
-					<td class='labels'>
-						<label><?php _e( 'Instagram Username', 'Easy_Instagram' ); ?></label>
-					</td>
-					<td>
-						<?php echo $username; ?>
-					</td>
-				</tr>
-
-				<tr>
-					<td class='labels'>
-						<label><?php _e( 'Instagram User ID', 'Easy_Instagram' ); ?></label>
-					</td>
-					<td>
-						<?php echo $user_id; ?>
-					</td>
-				</tr>
-
-				<tr>
-					<td>
-						<?php wp_nonce_field( 'ei_user_logout_nonce', 'ei_user_logout_nonce' ); ?>
-					</td>
-					<td>
-						<input type='submit' name='instagram-logout' value="<?php _e( 'Instagram Logout', 'Easy_Instagram' );?>" />
-					</td>
-				</tr>
-		<?php endif; ?>
-			<?php if ( NULL != $instagram_exception ): ?>
-			<tr>
-				<td colspan='2' class='exception'>
-					<?php echo $instagram_exception->getMessage(); ?>
-				</td>
-			</tr>				
-			<?php endif; ?>
-		</table>
-	</form>
-
-	</div> <?php /* ei-general-setings */ ?>
-
-	<div id='ei-help'>
-		<?php self::print_help_page(); ?>
-	</div>
-
-<?php
-
-	}
-	
-	//=========================================================================
-
-	static function print_help_page() {
+	public function print_help_page() {
 		$usage_file = trailingslashit( dirname( __FILE__ ) ) . '../usage.html';
 		include( $usage_file );
 	}
 
 	//=========================================================================
 
-	static function set_instagram_user_data( $username, $id ) {
+	public function set_instagram_user_data( $username, $id ) {
 		update_option( 'easy_instagram_username', $username );
 		update_option( 'easy_instagram_user_id', $id );
 	}
 
 	//=========================================================================
 
-	static function get_instagram_user_data() {
+	public function get_instagram_user_data() {
 		$username = get_option( 'easy_instagram_username' );
 		$user_id = get_option( 'easy_instagram_user_id' );
 		return array( $username, $user_id );
@@ -432,182 +495,179 @@ class Easy_Instagram {
 
 	//=========================================================================
 
-	static function set_access_token( $access_token ) {
+	public function set_access_token( $access_token ) {
 		update_option( 'easy_instagram_access_token', $access_token );
 	}
 
 	//=========================================================================
 
-	static function get_access_token() {
+	public function get_access_token() {
 		return get_option( 'easy_instagram_access_token' );
 	}
 
 	//=========================================================================
 
-	static function get_live_data( $instagram, $endpoint, $endpoint_type, $limit = 1 ) {
-        switch ( $endpoint_type ) {
-        case 'user':
-            $live_data = $instagram->getUserRecent( $endpoint );
-            break;
+	private function get_live_data( $instagram, $endpoint, $endpoint_type, $limit = 1 ) {
+		switch ( $endpoint_type ) {
+			case 'user':
+				$live_data = $instagram->getUserRecent( $endpoint );
+				break;
 
-        case 'tag':
-            $live_data = $instagram->getRecentTags( $endpoint );
-            break;
+			case 'tag':
+				$live_data = $instagram->getRecentTags( $endpoint );
+				break;
 
-        default:
-            $live_data = NULL;
-            break;
-        }
-		
-        if ( NULL != $live_data ) {
-            $recent = json_decode( $live_data );
-            if ( NULL == $recent ) {
-                $live_data = NULL;                
-            }
-            else {
-                if ( $limit > self::$max_images ) {
-                    $limit = self::$max_images;
-                }
+			default:
+				$live_data = null;
+				break;
+		}
 
-				if ( ! isset( $recent->data ) || ( NULL == $recent->data ) ) {
-					$live_data = NULL;
+		if ( ! is_null( $live_data ) ) {
+			$recent = json_decode( $live_data );
+			if ( is_null( $recent ) ) {
+				$live_data = null;
+			}
+			else {
+				if ( $limit > $this->defaults['max_images'] ) {
+					$limit = $this->defaults['max_images'];
 				}
-				
-                $live_data = array_slice( $recent->data, 0, $limit );
-            }
-        }
 
+				if ( ! isset( $recent->data ) || ( is_null( $recent->data ) ) ) {
+					$live_data = null;
+				}
+
+				$live_data = array_slice( $recent->data, 0, $limit );
+			}
+		}
 		return $live_data;
 	}
 
 	//=========================================================================
 
-	static function shortcode( $attributes ) {
-		extract(
-			shortcode_atts(
-				array(
-					'tag'					=> '',
-					'user_id'				=> '',
-					'limit'					=> 1,
-					'caption_hashtags'		=> true,
-					'caption_char_limit'	=> self::$default_caption_char_limit,
-					'author_text'			=> self::$default_author_text,
-					'author_full_name'      => false,
-					'thumb_click'			=> self::$default_thumb_click,
-					'time_text'				=> self::$default_time_text,
-					'time_format'			=> self::$default_time_format,
-                    'thumb_size'            => self::$default_thumb_size
-				),
-				$attributes
-			)
+	public function shortcode( $attributes ) {
+		extract( shortcode_atts(
+			array(
+				'tag'					=> '',
+				'user_id'				=> '',
+				'limit'					=> 1,
+				'caption_hashtags'		=> true,
+				'caption_char_limit'	=> $this->defaults['caption_char_limit'],
+				'author_text'			=> $this->defaults['author_text'],
+				'author_full_name'		=> false,
+				'thumb_click'			=> $this->defaults['thumb_click'],
+				'time_text'				=> $this->defaults['time_text'],
+				'time_format'			=> $this->defaults['time_format'],
+				'thumb_size'			=> $this->defaults['thumb_size'],
+				'template'				=> 'default'
+			), $attributes )
 		);
 
-		//$caption_hashtags = strtolower( $caption_hashtags );
-		//$author_full_name = strtolower( $author_full_name );
-		
-        $params = array(
-            'tag'                => $tag,
-            'user_id'            => $user_id,
-            'limit'              => $limit,
-            'caption_hashtags'   => $caption_hashtags,
-            'caption_char_limit' => $caption_char_limit, 
-            'author_text'        => $author_text,
-			'author_full_name'   => $author_full_name,
-            'thumb_click'        => $thumb_click, 
-            'time_text'          => $time_text, 
-            'time_format'        => $time_format,
-            'thumb_size'         => $thumb_size
-        );
+		$params = array(
+			'tag'				=> $tag,
+			'user_id'			=> $user_id,
+			'limit'				=> $limit,
+			'caption_hashtags'	=> $caption_hashtags,
+			'caption_char_limit'=> $caption_char_limit,
+			'author_text'		=> $author_text,
+			'author_full_name'	=> $author_full_name,
+			'thumb_click'		=> $thumb_click,
+			'time_text'			=> $time_text,
+			'time_format'		=> $time_format,
+			'thumb_size'		=> $thumb_size,
+			'template'			=> $template
+		);
 
-		return self::generate_content( $params );
+		return $this->generate_content( $params );
 	}
 
-    //================================================================
+	//================================================================
 
-    static private function _get_data_for_user_or_tag( $instagram, $endpoint_id, $limit, $endpoint_type ) {
-        if ( empty( $endpoint_id ) || empty( $endpoint_type ) ) {
-            return NULL;
-        }
-        
-        // Get cached data if available. Get live data if no cached data found.
-        list( $data, $expired ) = Easy_Instagram_Cache::get_cached_data_for_user_or_tag( $endpoint_id, $limit, $endpoint_type );
+	private function _get_data_for_user_or_tag( $instagram, $endpoint_id, $limit, $endpoint_type, &$error ) {
+		if ( empty( $endpoint_id ) || empty( $endpoint_type ) ) {
+			return null;
+		}
 
-        $live_data = NULL;
-        if ( $expired || ( NULL == $data ) ) {
-            $live_data = self::get_live_data( $instagram, $endpoint_id, $endpoint_type, $limit );
-        }
-    
-        if ( empty( $live_data ) ) {
-            if ( ! empty( $data ) ) {
-                return $data['data'];
-            }
-            else {
-                return NULL;
-            }
-        }
+		// Get cached data if available. Get live data if no cached data found.
+		list( $data, $expired ) = $this->cache->get_cached_data_for_user_or_tag( $endpoint_id, $limit, $endpoint_type );
 
-        //Cache live data
-        $cache_data = Easy_Instagram_Cache::cache_live_data( $live_data, $endpoint_id, $endpoint_type );
-            
-        return $cache_data['data'];
-    }
+		$live_data = null;
+		if ( $expired || ( is_null( $data ) ) ) {
+			$live_data = $this->get_live_data( $instagram, $endpoint_id, $endpoint_type, $limit );
+		}
 
-    //================================================================
+		if ( empty( $live_data ) ) {
+			if ( ! empty( $data ) ) {
+				return $data['data'];
+			}
+			else {
+				return null;
+			}
+		}
 
-    static function get_thumb_size_from_params( $param_thumb_size ) {
-        $thumb_size = trim( $param_thumb_size );
-        
-        $thumb_w = 0;
-        $thumb_h = 0;
+		// Cache live data
+		try {
+			$cache_data = $this->cache->cache_live_data( $live_data, $endpoint_id, $endpoint_type, $limit );
+			if ( false === $cache_data ) {
+				return null;
+			}
+		} catch( Exception $ex ) {
+			$error = $ex->getMessage();
+			return null;
+		}
 
-        if ( preg_match( '/^([0-9]+)(?:\s*)?x(?:\s*)?([0-9]+)$/', $thumb_size, $matches ) ) {
-            $w = (int) $matches[1];
-            $h = (int) $matches[2];
-            if ( $w >= self::$min_thumb_size && $h >= self::$min_thumb_size ) {
-                $thumb_w = $w;
-                $thumb_h = $h;
-            }
-        }
-        else {
-            if ( preg_match( '/^([0-9]+)(?:\s*px)?$/', $thumb_size, $matches ) ) {
-                $w = (int) $matches[1];
-                if ( $w >= self::$min_thumb_size ) {
-                    $thumb_w = $thumb_h = $w;
-                }
-            }
-        }
-        return array( $thumb_w, $thumb_h );
-    }
+		return $cache_data['data'];
+	}
 
-    //================================================================
+	//================================================================
 
-	static function _get_render_elements_for_ajax( $params ) {
-        $tag                = $params['tag'];
-        $user_id            = $params['user_id'];
-        $limit              = $params['limit'];
-        $caption_hashtags   = $params['caption_hashtags'];
-        $caption_char_limit = $params['caption_char_limit'];
-        $author_text        = $params['author_text'];
-		$author_full_name   = $params['author_full_name'];
-        $thumb_click        = $params['thumb_click'];
-        $time_text          = trim( $params['time_text'] );
-        $time_format        = trim( $params['time_format'] );
-		$thumb_size         = trim( $params['thumb_size'] );
-		
-		//Generate a unique id for the wrapper div
+	public function get_thumb_size_from_params( $param_thumb_size ) {
+		$thumb_size = trim( $param_thumb_size );
+
+		$thumb_w = 0;
+		$thumb_h = 0;
+
+		if ( preg_match( '/^([0-9]+)(?:\s*)?x(?:\s*)?([0-9]+)$/', $thumb_size, $matches ) ) {
+			$w = (int) $matches[1];
+			$h = (int) $matches[2];
+			if ( $w >= $this->defaults['min_thumb_size'] && $h >= $this->defaults['min_thumb_size'] ) {
+				$thumb_w = $w;
+				$thumb_h = $h;
+			}
+		}
+		else {
+			if ( preg_match( '/^([0-9]+)(?:\s*px)?$/', $thumb_size, $matches ) ) {
+				$w = (int) $matches[1];
+				if ( $w >= $this->defaults['min_thumb_size'] ) {
+					$thumb_w = $thumb_h = $w;
+				}
+			}
+		}
+		return array( $thumb_w, $thumb_h );
+	}
+
+	//================================================================
+
+	public function _get_render_elements_for_ajax( $args ) {
+		extract( $args );
+
+		$time_text = trim( $time_text );
+		$time_format = trim( $time_format );
+		$thumb_size = trim( $thumb_size );
+
+		// Generate a unique id for the wrapper div
 		$wrapper_id = 'eitw-' . md5( microtime() . rand( 1, 1000 ) );
-		$loading_image = '<img src="' . plugins_url( 'images/ajax-loader.gif', dirname( __FILE__ ) ) . '" alt="' .  __( 'Loading...', 'Easy_Instagram' ) . '" />';
+		$loading_image = '<img src="' . plugins_url( 'assets/images/ajax-loader.gif', dirname( __FILE__ ) ) . '" alt="' .  __( 'Loading...', 'Easy_Instagram' ) . '" />';
 		$content_loading_info = apply_filters( 'easy_instagram_content_loading_info', $loading_image );
-		
+
 		$out = '';
-		
-		$out .= '<div class="easy-instagram-thumbnail-wrapper" id="' . $wrapper_id . '">';
+
+		$out .= '<div class="easy-instagram-container" id="' . $wrapper_id . '">';
 		$out .= $content_loading_info;
 		$out .= '<form action="" style="display:none;">';
 		$out .= '<input type="hidden" name="action" value="easy_instagram_content" />';
 		$out .= '<input type="hidden" name="tag" value="' . esc_attr( $tag ) .'" />';
 		$out .= '<input type="hidden" name="user_id" value="' . esc_attr( $user_id ) .'" />';
-		$out .= '<input type="hidden" name="limit" value="' . esc_attr( $limit ) .'" />';
+		$out .= '<input type="hidden" name="limit" value="' . absint( $limit ) .'" />';
 		$out .= '<input type="hidden" name="caption_hashtags" value="' . esc_attr( $caption_hashtags ) .'" />';
 		$out .= '<input type="hidden" name="caption_char_limit" value="' . esc_attr( $caption_char_limit ) .'" />';
 		$out .= '<input type="hidden" name="author_text" value="' . esc_attr( $author_text ) .'" />';
@@ -616,263 +676,331 @@ class Easy_Instagram {
 		$out .= '<input type="hidden" name="time_text" value="' . esc_attr( $time_text ) .'" />';
 		$out .= '<input type="hidden" name="time_format" value="' . esc_attr( $time_format ) .'" />';
 		$out .= '<input type="hidden" name="thumb_size" value="' . esc_attr( $thumb_size ) .'" />';
+		$out .= '<input type="hidden" name="template" value="' . esc_attr( $template ) .'" />';
 		$out .= '<input type="hidden" name="easy_instagram_content_security" value="' . wp_create_nonce( 'easy-instagram-content-nonce' ) .'" />';
 		$out .= '</form>';
 		$out .= '</div>';
 		return $out;
 	}
 
-    //================================================================
-	
-    static function _get_render_elements( $instagram_elements, $params ) {
-        $out = '';
+	//================================================================
 
-        if ( empty( $instagram_elements ) ) {
-            return $out;
-        }
+	private function _get_render_elements( $instagram_elements, $args ) {
+		$out = '';
 
-        $limit              = $params['limit'];
-        $caption_hashtags   = $params['caption_hashtags'];
-        $caption_char_limit = $params['caption_char_limit'];
-        $author_text        = $params['author_text'];
-		$author_full_name   = $params['author_full_name'];
-        $thumb_click        = $params['thumb_click'];
-        $time_text          = trim( $params['time_text'] );
-        $time_format        = trim( $params['time_format'] );
+		if ( empty( $instagram_elements ) ) {
+			return $out;
+		}
+		
+		extract( $args );
 
-        list( $thumb_w, $thumb_h ) = self::get_thumb_size_from_params( $params['thumb_size'] );
+		$time_text = trim( $time_text );
+		$time_format = trim( $time_format );
 
-        $crt = 0;
-        foreach ( $instagram_elements as $elem ) {
-            $large_image_url = $elem['standard_resolution']['url'];
-            $thumbnail_url = $elem['thumbnail']['url'];
-            $instagram_image_original_link = $elem['link'];
+		list( $thumb_w, $thumb_h ) = $this->get_thumb_size_from_params( $thumb_size );
 
-            if ( $thumb_w > 0 && $thumb_h > 0 ) {
-                //TODO: generate new thumbnails
-                $width = $thumb_w;
-                $height = $thumb_h;
-                $thumbnail_url = Easy_Instagram_Cache::get_custom_thumbnail_url( $elem, $width, $height );
-            }
-            else {
-                $width = $elem['thumbnail']['width'];
-                $height = $elem['thumbnail']['height'];
-            }
+		$utils = new Easy_Instagram_Utils();
 
-			if ( '' == $caption_hashtags ) {
+		$template_elements = array();
+
+		$crt = 0;
+		foreach ( $instagram_elements as $elem ) {
+			$current_template_element = array();
+			
+			$large_image_url = $elem['standard_resolution']['url'];
+			$thumbnail_url = $elem['thumbnail']['url'];
+			$instagram_image_original_link = $elem['link'];
+			$type = $elem['type'];
+			$video_url = $elem['video_standard_resolution']['url'];
+			$video_width = $elem['video_standard_resolution']['width'];
+			$video_height = $elem['video_standard_resolution']['height'];
+			$video_id = $elem['id'];
+			$video_large_image = $elem['standard_resolution']['url'];
+
+			if ( $thumb_w > 0 && $thumb_h > 0 ) {
+				//TODO: generate new thumbnails
+				$width = $thumb_w;
+				$height = $thumb_h;
+				$thumbnail_url = $this->cache->get_custom_thumbnail_url( $elem, $width, $height );
+			}
+			else {
+				$width = $elem['thumbnail']['width'];
+				$height = $elem['thumbnail']['height'];
+			}
+
+			if ( empty( $caption_hashtags ) ) {
 				$caption_hashtags = false;
 			}
 
-            $caption_text = Easy_Instagram_Utils::get_caption_text( $elem, $caption_hashtags, $caption_char_limit );
-            $thickbox_caption_text = Easy_Instagram_Utils::get_caption_text( $elem, false, 100 );
+			$caption_text = $utils->get_caption_text( $elem, $caption_hashtags, $caption_char_limit );
+			$thickbox_caption_text = $utils->get_caption_text( $elem, false, 100 );
 
-            $out .= '<div class="easy-instagram-thumbnail-wrapper">';
+			$current_template_element['type'] = $type;
+			
+			$current_template_element['thumbnail_click'] = $thumb_click;
 
-            $has_thumb_action = FALSE;
-            switch ( $thumb_click ) {
-            case 'thickbox':
-				$link = '<a href="' . $large_image_url . '" class="thickbox" title="' . $thickbox_caption_text . '">';
-                $out .= apply_filters( 'easy_instagram_thumb_link', $link );
-                $has_thumb_action = TRUE;
-                break;
+			switch ( $thumb_click ) {
+				case 'thickbox':
+				case 'colorbox':
+					$current_template_element['thumbnail_link_title'] = $thickbox_caption_text;
+					$current_template_element['thumbnail_link_url'] = $large_image_url;
+					if ( 'video' == $type ) {
+						$current_template_element['video_url'] = $video_url;
+						$current_template_element['video_width'] = $video_width;
+						$current_template_element['video_height'] = $video_height;
+						$current_template_element['video_id'] = $video_id;
+						$current_template_element['video_large_url'] = $video_large_image;
+					}
+					break;
+				
+				case 'original':
+					$current_template_element['thumbnail_link_title'] = $caption_text;
+					$current_template_element['thumbnail_link_url'] = $instagram_image_original_link;
+					if ( 'video' == $type ) {
+						$current_template_element['video_url'] = $video_url;
+					}
+					break;
 
-            case 'original':
-				$link = '<a href="' . $instagram_image_original_link . '" target="_blank" title="' . $caption_text . '">';
-                $out .= apply_filters( 'easy_instagram_thumb_link', $link );
-                $has_thumb_action = TRUE;
-                break;
+				default:
+					$current_template_element['thumbnail_link_title'] = '';
+					$current_template_element['thumbnail_link_url'] = '';
+					break;
+			}
 
-            default:
-                break;
-            }
+			$current_template_element['thumbnail_url'] = $thumbnail_url;
+			$current_template_element['thumbnail_width'] = $width;
+			$current_template_element['thumbnail_height'] = $height;
+			
+			if ( empty( $elem['caption_from'] ) ) {
+				$current_template_element['author'] = '';
+			}
+			else {
+				// Make a link only from the user name, not all the 'published by' text
+				if ( preg_match( '/^(.*)%s(.*)$/', $author_text, $matches ) ) {
+					$published_by = $matches[1] . '<a href="http://instagram.com/' . $elem['user_name'] . '" target="_blank">';
+					$published_by .= ( 'true' == $author_full_name ) ? $elem['caption_from'] : $elem['user_name'];
+					$published_by .= '</a>';
+					$published_by .= $matches[2];
+				}
+				else {
+					$published_by = $author_text;
+				}
 
-            $out .= '<img src="' . $thumbnail_url . '" alt="" style="width:'
-                . $width. 'px; height: ' . $height . 'px;" class="easy-instagram-thumbnail" />';
-            
-            if ( $has_thumb_action ) {
-                $out .= '</a>';
-            }
+				$current_template_element['author'] = $published_by;
+			}
 
-            if ( '' != $elem['caption_from'] ) {
-                // Make a link only from the user name, not all the 'published by' text
-                if ( preg_match( '/^(.*)%s(.*)$/', $author_text, $matches ) ) {
-                    $published_by = $matches[1] . '<a href="http://instagram.com/' . $elem['user_name'] . '" target="_blank">';
-                    $published_by .= ( 'true' == $author_full_name ) ? $elem['caption_from'] : $elem['user_name'];
-                    $published_by .= '</a>';
-                    $published_by .= $matches[2];
-                }
-                else {
-                    $published_by = $author_text;
-                }
+			if ( $caption_char_limit > 0 ) {
+				$current_template_element['thumbnail_caption'] = $caption_text;
+			}
+			else {
+				$current_template_element['thumbnail_caption'] = '';
+			}
 
-                $out .= '<div class="easy-instagram-thumbnail-author">';
-                $out .= $published_by;
-                $out .= '</div>';
-            }
+			if ( is_null( $elem['caption_created_time'] ) ) {
+				$elem_time = $elem['created_time'];
+			}
+			else {
+				$elem_time = max( array( $elem['caption_created_time'], $elem['created_time'] ) );
+			}
+			$current_template_element['created_at'] = $elem_time;
+			
+			if ( empty( $time_text ) ) {
+				$current_template_element['created_at_formatted'] = '';
+			}
+			else {
+				if ( preg_match( '/^(.*)#T#(.*)$/', $time_text, $matches ) ) {
+					if ( '' != $time_format ) {
+						if ( '#R#' == $time_format ) { // Relative
+							$time_string = $utils->relative_time( $elem_time );
+						}
+						else {
+							$time_string = strftime( $time_format, $elem_time );
+						}
+					}
+					else {
+						$time_string = '';
+					}
 
-            if ( $caption_char_limit > 0 ) {
-                $out .= '<div class="easy-instagram-thumbnail-caption">' . $caption_text . '</div>';
-            }
+					$time_string = $matches[1] . $time_string . $matches[2];
+				}
+				else {
+					$time_string = $time_text; // No interpolation
+				}
+				
+				$current_template_element['created_at_formatted'] = $time_string;
+			}
 
-            if ( NULL == $elem['caption_created_time'] ) {
-                $elem_time = $elem['created_time'];
-            }
-            else {
-                $elem_time = ( $elem['caption_created_time'] > $elem['created_time'] )
-                    ? $elem['caption_created_time'] : $elem['created_time'];
-            }
-            
-            if ( '' != $time_text ) {
-                $out .= '<div class="easy-instagram-thumbnail-time">';
-                
-                if ( preg_match( '/^(.*)#T#(.*)$/', $time_text, $matches ) ) {
-                    if ( '' != $time_format ) {
-                        if ( '#R#' == $time_format ) { //Relative
-                            $time_string = Easy_Instagram_Utils::relative_time( $elem_time );
-                        }
-                        else {
-                            $time_string = strftime( $time_format, $elem_time );
-                        }
-                    }
-                    else {
-                        $time_string = '';
-                    }
+			$template_elements[] = $current_template_element;
 
-                    $time_string = $matches[1] . $time_string . $matches[2];
-                }
-                else {
-                    $time_string = $time_text; //No interpolation
-                }
-                
-                $out .= $time_string;
-                
-                $out .= '</div>';
-            }
+			$crt++;
+			if ( $crt >= $limit ) {
+				break;
+			}
+		}
 
-            $out .= '</div>';
-            
-            $crt++;
-            if ( $crt >= $limit ) {
-                break;
-            }
-        }
+		$out = $this->load_template( $template, $template_elements );
 
-        return $out;
-    }
+		return $out;
+	}
 
-    //================================================================
+	private function load_template( $template_name = 'default', $template_elements ) {
+		$name = trim( $template_name );
+		if ( preg_match( '/^(.*)\.php$/', $name, $matches ) ) {
+			$name = $matches[1];
+		}
+		
+		$theme_template = locate_template( sprintf( 'easy-instagram-%s.php', $name ) );
+		if ( empty( $theme_template ) ) {
+			// Load the template from plugin
+			$template_path = sprintf( '%stemplates/%s.php', plugin_dir_path( dirname( __FILE__ ) ), $name );
+		
+			if ( ! file_exists( $template_path ) ) {
+				throw new Exception( sprintf( __( 'Template file [%s.php] does not exist !', 'Easy_Instagram' ), $name ) );
+			}
+		}
+		else {
+			// Load theme's template
+			$template_path = $theme_template;
+		}
+		
+		$easy_instagram_elements = $template_elements;
+		
+		$ret = ob_start();
+		
+		include $template_path;
+		
+		$out = ob_get_clean();
+		return $out;
+	}
 
-	static function generate_content( $params ) {
-        $tag     = $params['tag'];
-        $user_id = $params['user_id'];
+	public function generate_content( $params ) {
+		$tag     = $params['tag'];
+		$user_id = $params['user_id'];
 
-		self::$load_scripts_and_styles = TRUE;
+		$this->load_scripts_and_styles = true;
 
 		if ( empty( $tag ) && empty( $user_id ) ) {
 			return '';
 		}
 
-		$access_token = self::get_access_token();
+		$access_token = $this->get_access_token();
 		if ( empty( $access_token ) ) {
 			return '';
 		}
 
-		$config = self::get_instagram_config();
+		$config = $this->get_instagram_config();
 		$instagram = new MC_Instagram_Connector( $config );
 		$instagram->setAccessToken( $access_token );
 
-        //Select which Instagram endpoint to use
+		//Select which Instagram endpoint to use
 		if ( ! empty( $user_id ) ) {
-            $endpoint_id = $user_id;
-            $endpoint_type = 'user';
+			$endpoint_id = $user_id;
+			$endpoint_type = 'user';
 		}
 		else {
 			if ( ! empty( $tag ) ) {
-                $endpoint_id = $tag;
-                $endpoint_type = 'tag';
+				$endpoint_id = $tag;
+				$endpoint_type = 'tag';
 			}
 		}
-		
-		return self::_get_render_elements_for_ajax( $params );
+
+		return $this->_get_render_elements_for_ajax( $params );
 	}
 
 	//=========================================================================
 
-	static function generate_content_ajax() {
+	public function generate_content_ajax() {
 		check_ajax_referer( 'easy-instagram-content-nonce', 'easy_instagram_content_security' );
-	
-        $tag     = $_GET['tag'];
-        $user_id = $_GET['user_id'];
-        $limit   = $_GET['limit'];
+
+		$error_reporting_status = error_reporting();
+		// Disable error reporting. Protect against AJAX call completely failing.
+		error_reporting( 0 );
+
+		$tag     = $_GET['tag'];
+		$user_id = $_GET['user_id'];
+		$limit   = $_GET['limit'];
 
 		$data = array( 'status' => 'ERROR' );
 
 		if ( empty( $tag ) && empty( $user_id ) ) {
 			echo json_encode( $data );
+			error_reporting( $error_reporting_status );
 			exit;
 		}
 
-		$access_token = self::get_access_token();
+		$access_token = $this->get_access_token();
 		if ( empty( $access_token ) ) {
+			$data['error'] = __( 'Invalid access token. Please check your Instagram settings', 'Easy_Instagram' );
 			echo json_encode( $data );
+			error_reporting( $error_reporting_status );
 			exit;
 		}
 
-		$config = self::get_instagram_config();
+		$config = $this->get_instagram_config();
 		$instagram = new MC_Instagram_Connector( $config );
 		$instagram->setAccessToken( $access_token );
 
-        //Select which Instagram endpoint to use
+		//Select which Instagram endpoint to use
 		if ( ! empty( $user_id ) ) {
-            $endpoint_id = $user_id;
-            $endpoint_type = 'user';
+			$endpoint_id = $user_id;
+			$endpoint_type = 'user';
 		}
 		else {
 			if ( ! empty( $tag ) ) {
-                $endpoint_id = $tag;
-                $endpoint_type = 'tag';
+				$endpoint_id = $tag;
+				$endpoint_type = 'tag';
 			}
 		}
 
-        $instagram_elements = self::_get_data_for_user_or_tag( $instagram, $endpoint_id, $limit, $endpoint_type );
+		$error = '';
+		$instagram_elements = $this->_get_data_for_user_or_tag( $instagram, $endpoint_id, $limit, $endpoint_type, $error );
+		if ( is_null( $instagram_elements ) ) {
+			$data['error'] = $error;
+		}
+		else {
+			try {
+				$rendered = $this->_get_render_elements( $instagram_elements, $_GET );
+				$data['status'] = 'SUCCESS';
+				$data['output'] = $rendered;
+			} catch ( Exception $ex ) {
+				$data['error'] = $ex->getMessage();
+			}
+		}
 
-		$rendered = self::_get_render_elements( $instagram_elements, $_GET );
-		$data['status'] = 'SUCCESS';
-		$data['output'] = $rendered;
 		echo json_encode( $data );
+		error_reporting( $error_reporting_status );
 		exit;
 	}
 
 	//=====================================================================
 
-	static function plugin_activation() {
+	public function plugin_activation() {
 		wp_schedule_event(
 			time(),
-			'hourly',//'daily',
-			'easy_instagram_clear_cache_event'
-		);
+			'daily',
+			'easy_instagram_clear_cache_event' );
 	}
 
 	//=====================================================================
 
-    static function debug_cron( $schedules ) {
-        $schedules['every_five_minutes'] = array(
-            'interval' => 300, // 5 min in seconds
-            'display'  => __( 'Every Five Minutes', 'Easy_Instagram' ),
-        );
- 
-        return $schedules;
-    }
+	public function debug_cron( $schedules ) {
+		$schedules['every_five_minutes'] = array(
+			'interval' => 300, // 5 min in seconds
+			'display'  => __( 'Every Five Minutes', 'Easy_Instagram' ),
+		);
+
+		return $schedules;
+	}
 
 	//=====================================================================
 
-	static function plugin_deactivation() {
+	public function plugin_deactivation() {
 		wp_clear_scheduled_hook( 'easy_instagram_clear_cache_event' );
 	}
 
-    //================================================================
+	//================================================================
 
-    static function clear_cache_event_action() {
-        Easy_Instagram_Cache::clear_expired_cache_action();
-    }
+	public function clear_cache_event_action() {
+		$this->cache->clear_expired_cache_action();
+	}
 }
