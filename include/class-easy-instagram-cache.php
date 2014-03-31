@@ -388,7 +388,8 @@ class Easy_Instagram_Cache {
 			'requested_count' => $limit,
 			'data' => array()
 		);
-
+		
+		$unique_rel = md5( $endpoint_type . $endpoint_id );
 		$utils = new Easy_Instagram_Utils();
 		
 		foreach ( $live_data as $elem ) {
@@ -403,7 +404,8 @@ class Easy_Instagram_Cache {
 				'caption_created_time'	=> $caption_created_time,
 				'user_name'				=> $user_name,
 				'type'					=> $elem->type,
-				'id'					=> $elem->id
+				'id'					=> $elem->id,
+				'unique_rel'				=> $unique_rel
 			);
 
 			foreach ( $this->default_image_sizes as $image_size ) {

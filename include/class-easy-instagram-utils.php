@@ -187,13 +187,15 @@ class Easy_Instagram_Utils {
 		$video_width = $element['video_width'];
 		$video_height = $element['video_height'];
 		
+		$unique_rel = $element['unique_rel'];
+		
 		switch ( $element['thumbnail_click'] ) {
 			case 'thickbox':
 				$out .= $this->get_hidden_video_element( $element, $video_wrapper_id, $video_id );
 			
-				$link = sprintf( '<a href="#TB_inline?&width=%d&height=%d&inlineId=%s" class="%s" title="%s">',
+				$link = sprintf( '<a href="#TB_inline?&width=%d&height=%d&inlineId=%s" class="%s" rel="%s" title="%s">',
 				 			$video_width, $video_height, esc_attr( $video_wrapper_id ),
-							'thickbox video', esc_html( $element['thumbnail_link_title'] ) );
+							'thickbox video', $unique_rel, esc_html( $element['thumbnail_link_title'] ) );
 
 				$out .= apply_filters( 'easy_instagram_video_thumb_link', $link, $element['video_url'], 
 							$video_width, $video_height );
@@ -205,7 +207,7 @@ class Easy_Instagram_Utils {
 			case 'colorbox':
 				$out .= $this->get_hidden_video_element( $element, $video_wrapper_id, $video_id );
 				
-				$link = sprintf( '<a href="#" class="colorbox-video" title="%s">', esc_html( $element['thumbnail_link_title'] ) );
+				$link = sprintf( '<a href="#" class="colorbox-video" rel="%s" title="%s">', $unique_rel, esc_html( $element['thumbnail_link_title'] ) );
 
 				$out .= apply_filters( 'easy_instagram_video_thumb_link', $link, $element['video_url'], 
 							$video_width, $video_height );
@@ -229,24 +231,23 @@ class Easy_Instagram_Utils {
 				break;
 		}
 
-		$out .= sprintf( '<img src="%s" alt="%s" style="width: %dpx; height: %dpx" class="%s" />', 
-					esc_url_raw( $element['thumbnail_url'] ), '', $thumbnail_width, 
-					$thumbnail_height, 'easy-instagram-thumbnail' );
+		$thumb = $this->get_thumbnail_image( $element );
+		$out .= $thumb;
 		
 		if ( $show_play_icon ) {
-			$icon_size = $this->get_video_icon_size( $thumbnail_width, $thumbnail_height );
+			//$icon_size = $this->get_video_icon_size( $thumbnail_width, $thumbnail_height );
 			
-			$icon_filename = sprintf( 'assets/images/video-play-%d.png', $icon_size );
+			$icon_filename = sprintf( 'assets/images/video-play-128.png' );
 			$video_icon_url = apply_filters( 'video_icon', plugins_url( $icon_filename, dirname( __FILE__ ) ) ) ;
 			
-			$icon_width = $icon_height = $icon_size;
-			$left = round( 0.5 * ( $thumbnail_width - $icon_width ) );
-			$top = round( 0.5 * ( $thumbnail_height - $icon_height ) );
+			//$icon_width = $icon_height = $icon_size;
+			//$left = round( 0.5 * ( $thumbnail_width - $icon_width ) );
+			//$top = round( 0.5 * ( $thumbnail_height - $icon_height ) );
 			
-			$icon_style = sprintf( 'width: %dpx; height: %dpx; top: %dpx; left: %dpx;', 
-							$icon_width, $icon_height, $top, $left );
+			//$icon_style = sprintf( 'width: %dpx; height: %dpx; top: %dpx; left: %dpx;', 
+							//$icon_width, $icon_height, $top, $left );
 			
-			$out .= sprintf( '<img class="video-icon" src="%s" style="%s" alt="%s" />', $video_icon_url, $icon_style, '' );
+			$out .= sprintf( '<img class="video-icon" src="%s" alt="%s" />', $video_icon_url, '' );
 		}
 		
 		if ( $has_thumb_action ) {
@@ -259,19 +260,20 @@ class Easy_Instagram_Utils {
 	private function get_thumbnail_html_image( $element ) {
 		$out = '';
 		$has_thumb_action = false;
-
 		$thumbnail_link_url = $element['thumbnail_link_url'];
 		$thumbnail_link_title = $element['thumbnail_link_title'];
+		
+		$unique_rel = $element['unique_rel'];
 
 		switch ( $element['thumbnail_click'] ) {
 			case 'thickbox':
-				$link = sprintf( '<a href="%s" class="thickbox" title="%s">', $thumbnail_link_url, $thumbnail_link_title );
+				$link = sprintf( '<a href="%s" class="thickbox" rel="%s" title="%s">', $thumbnail_link_url, $unique_rel, $thumbnail_link_title );
 				$out .= apply_filters( 'easy_instagram_thumb_link', $link );
 				$has_thumb_action = true;
 				break;
 			
 			case 'colorbox':
-				$link = sprintf( '<a href="%s" class="colorbox" title="%s">', $thumbnail_link_url, $thumbnail_link_title );
+				$link = sprintf( '<a href="%s" class="colorbox" rel="%s" title="%s">', $thumbnail_link_url, $unique_rel ,$thumbnail_link_title );
 				$out .= apply_filters( 'easy_instagram_thumb_link', $link );
 				$has_thumb_action = true;
 				break;
@@ -286,14 +288,45 @@ class Easy_Instagram_Utils {
 				break;
 		}
 		
-		$out .= sprintf( '<img src="%s" alt="" style="width: %dpx; height: %dpx;" class="easy-instagram-thumbnail" />', 
-					esc_url_raw( $element['thumbnail_url'] ), $element['thumbnail_width'], $element['thumbnail_height'] );
-
+		$thumb = $this->get_thumbnail_image( $element );
+		$out .= $thumb;
+		
 		if ( $has_thumb_action ) {
 			$out .= '</a>';
 		}
 		
 		return $out;
+	}
+	
+	private function get_thumbnail_image( $element ) {
+		if ( isset( $element['dynamic_thumb'] ) ) {
+			switch( $element['dynamic_thumb'] ) {
+				case 'dynamic_thumbnail':
+					$thumb = sprintf( '<img src="%s"  class="easy-instagram-thumbnail" />', 
+							esc_url_raw( $element['thumbnail_url'] ) );
+				break;
+				
+				case 'dynamic_normal':
+					$thumb = sprintf( '<img src="%s"  class="easy-instagram-thumbnail" />', 
+							esc_url_raw( $element['thumbnail_normal_link_url'] ) );
+				break;
+				
+				case 'dynamic_large':
+					$thumb = sprintf( '<img src="%s"  class="easy-instagram-thumbnail" />', 
+							esc_url_raw( $element['thumbnail_large_link_url'] ) );
+				break;
+				
+				default:
+					$thumb = sprintf( '<img src="%s" alt="" style="width: %dpx; height: %dpx;" class="easy-instagram-thumbnail" />',
+						esc_url_raw( $element['thumbnail_url'] ), $element['thumbnail_width'], $element['thumbnail_height'] );
+				break;
+			}
+		}
+		else {
+			$thumb = sprintf( '<img src="%s" alt="" style="width: %dpx; height: %dpx;" class="easy-instagram-thumbnail" />', 
+					esc_url_raw( $element['thumbnail_url'] ), $element['thumbnail_width'], $element['thumbnail_height'] );
+		}
+		return $thumb;	
 	}
 
 	private function get_video_icon_size( $thumbnail_width, $thumbnail_height ) {

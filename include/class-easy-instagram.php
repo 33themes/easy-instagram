@@ -26,6 +26,7 @@ class Easy_Instagram {
 			'min_thumb_size' => 10,
 			'minimum_cache_expire_minutes' => 10,
 			'template' => 'default',
+			'ajax' => 'true'
 		);
 
 		add_action( 'admin_menu', array( $this, 'admin_menu' ) );
@@ -558,7 +559,8 @@ class Easy_Instagram {
 				'time_text'				=> $this->defaults['time_text'],
 				'time_format'			=> $this->defaults['time_format'],
 				'thumb_size'			=> $this->defaults['thumb_size'],
-				'template'				=> 'default'
+				'template'				=> 'default',
+				'ajax'                  => $this->defaults['ajax']
 			), $attributes )
 		);
 
@@ -574,7 +576,8 @@ class Easy_Instagram {
 			'time_text'			=> $time_text,
 			'time_format'		=> $time_format,
 			'thumb_size'		=> $thumb_size,
-			'template'			=> $template
+			'template'			=> $template,
+			'ajax'              => $ajax
 		);
 
 		return $this->generate_content( $params );
@@ -622,7 +625,7 @@ class Easy_Instagram {
 
 	public function get_thumb_size_from_params( $param_thumb_size ) {
 		$thumb_size = trim( $param_thumb_size );
-
+		
 		$thumb_w = 0;
 		$thumb_h = 0;
 
@@ -649,7 +652,6 @@ class Easy_Instagram {
 
 	public function _get_render_elements_for_ajax( $args ) {
 		extract( $args );
-
 		$time_text = trim( $time_text );
 		$time_format = trim( $time_format );
 		$thumb_size = trim( $thumb_size );
@@ -684,16 +686,56 @@ class Easy_Instagram {
 	}
 
 	//================================================================
+	
+	private function _get_render_elements_no_ajax( $args ) {
+		error_log(print_r($args,1));
+		extract( $args );
+		
+		$access_token = $this->get_access_token();
+		if ( empty( $access_token ) ) {
+			$rendered = __( 'Invalid access token. Please check your Instagram settings', 'Easy_Instagram' );
+			return $rendered;
+		}
+
+		$config = $this->get_instagram_config();
+		$instagram = new MC_Instagram_Connector( $config );
+		$instagram->setAccessToken( $access_token );
+
+		//Select which Instagram endpoint to use
+		if ( ! empty( $user_id ) ) {
+			$endpoint_id = $user_id;
+			$endpoint_type = 'user';
+		}
+		else {
+			if ( ! empty( $tag ) ) {
+				$endpoint_id = $tag;
+				$endpoint_type = 'tag';
+			}
+		}
+		
+		$error = '';
+		$instagram_elements = $this->_get_data_for_user_or_tag( $instagram, $endpoint_id, $limit, $endpoint_type, $error );
+		if ( is_null( $instagram_elements ) ) {
+			$rendered = $error;
+		}
+		else {
+			try {
+				$rendered = $this->_get_render_elements( $instagram_elements, $args );
+			} catch ( Exception $ex ) {
+				$rendered = $ex->getMessage();
+			}
+		}
+		return $rendered;
+	}
 
 	private function _get_render_elements( $instagram_elements, $args ) {
 		$out = '';
-
 		if ( empty( $instagram_elements ) ) {
 			return $out;
 		}
 		
 		extract( $args );
-
+		
 		$time_text = trim( $time_text );
 		$time_format = trim( $time_format );
 
@@ -708,14 +750,41 @@ class Easy_Instagram {
 			$current_template_element = array();
 			
 			$large_image_url = $elem['standard_resolution']['url'];
+			$normal_image_url = $elem['low_resolution']['url'];
 			$thumbnail_url = $elem['thumbnail']['url'];
 			$instagram_image_original_link = $elem['link'];
 			$type = $elem['type'];
-			$video_url = $elem['video_standard_resolution']['url'];
-			$video_width = $elem['video_standard_resolution']['width'];
-			$video_height = $elem['video_standard_resolution']['height'];
+			$unique_rel = $elem['unique_rel'];
+			
+			$video_url = $video_width = $video_height = '';
+			if ( isset( $elem['video_standard_resolution'] ) ) {
+				if ( isset( $elem['video_standard_resolution']['url'] ) ) {
+					$video_url = $elem['video_standard_resolution']['url'];
+				}
+				
+				if ( isset( $elem['video_standard_resolution']['width'] ) ) {
+					$video_width = $elem['video_standard_resolution']['width'];
+				}
+				
+				if ( isset( $elem['video_standard_resolution']['height'] ) ) {
+					$video_height = $elem['video_standard_resolution']['height'];
+				}
+			}
+			
 			$video_id = $elem['id'];
 			$video_large_image = $elem['standard_resolution']['url'];
+			
+			if ( 'dynamic_thumbnail' == $thumb_size ) {
+				$dynamic_thumb = 'dynamic_thumbnail';
+			}
+			
+			if ( 'dynamic_normal' == $thumb_size ) {
+				$dynamic_thumb = 'dynamic_normal';
+			}
+		
+			if ( 'dynamic_large' == $thumb_size ) {
+				$dynamic_thumb = 'dynamic_large';
+			}
 
 			if ( $thumb_w > 0 && $thumb_h > 0 ) {
 				//TODO: generate new thumbnails
@@ -736,6 +805,9 @@ class Easy_Instagram {
 			$thickbox_caption_text = $utils->get_caption_text( $elem, false, 100 );
 
 			$current_template_element['type'] = $type;
+			$current_template_element['unique_rel'] = $unique_rel;
+			$current_template_element['thumbnail_large_link_url'] = $large_image_url;
+			$current_template_element['thumbnail_normal_link_url'] = $normal_image_url;
 			
 			$current_template_element['thumbnail_click'] = $thumb_click;
 
@@ -770,6 +842,9 @@ class Easy_Instagram {
 			$current_template_element['thumbnail_url'] = $thumbnail_url;
 			$current_template_element['thumbnail_width'] = $width;
 			$current_template_element['thumbnail_height'] = $height;
+			if ( isset( $dynamic_thumb ) ) {
+				$current_template_element['dynamic_thumb'] = $dynamic_thumb;
+			}
 			
 			if ( empty( $elem['caption_from'] ) ) {
 				$current_template_element['author'] = '';
@@ -876,6 +951,7 @@ class Easy_Instagram {
 	public function generate_content( $params ) {
 		$tag     = $params['tag'];
 		$user_id = $params['user_id'];
+		$ajax = isset( $params['ajax'] ) ? ( 'true' == $params['ajax'] ) : false;
 
 		$this->load_scripts_and_styles = true;
 
@@ -887,24 +963,13 @@ class Easy_Instagram {
 		if ( empty( $access_token ) ) {
 			return '';
 		}
-
-		$config = $this->get_instagram_config();
-		$instagram = new MC_Instagram_Connector( $config );
-		$instagram->setAccessToken( $access_token );
-
-		//Select which Instagram endpoint to use
-		if ( ! empty( $user_id ) ) {
-			$endpoint_id = $user_id;
-			$endpoint_type = 'user';
+		
+		if ( $ajax ) {
+			return $this->_get_render_elements_for_ajax( $params );	
 		}
 		else {
-			if ( ! empty( $tag ) ) {
-				$endpoint_id = $tag;
-				$endpoint_type = 'tag';
-			}
+			return $this->_get_render_elements_no_ajax( $params );
 		}
-
-		return $this->_get_render_elements_for_ajax( $params );
 	}
 
 	//=========================================================================

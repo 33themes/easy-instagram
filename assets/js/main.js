@@ -46,6 +46,7 @@ jQuery(document).on( 'afterEasyInstagramLoad', function() {
 	}
 	
 	jQuery('.colorbox').colorbox();
+		jQuery("a.gallery").colorbox({rel:"group"})
 	
 	jQuery( '.thickbox.video' ).each(function() {
 		var hid_video = jQuery(this).prev('.easy-instagram-hid-video-wrapper').first().find('video').first();

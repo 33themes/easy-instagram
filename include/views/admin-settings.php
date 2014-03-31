@@ -44,6 +44,7 @@
 	<a href='#' class='ei-nav-tab' id='ei-select-help'><?php _e( 'Help', 'Easy_Instagram' ); ?></a>
 	</h2>
 
+<div class="wrapper">
 	<div id='ei-general-settings'>
 	<form method='POST' action="options.php" class='easy-instagram-settings-form'>
 
@@ -122,3 +123,4 @@
 	<div id='ei-help'>
 		<?php do_settings_sections( 'easy_instagram_help' ); ?>
 	</div>
+</div>	

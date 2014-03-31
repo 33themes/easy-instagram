@@ -8,9 +8,11 @@ else :
 	);
 	if ( ! empty( $easy_instagram_elements ) ) {
 		$element = $easy_instagram_elements[0];
-		$element_width = $element['thumbnail_width'];
-		$element_padding = 10; // px
-		$element_style = sprintf( 'width: %dpx; padding: %dpx;', $element_width, $element_padding );
+		if ( !empty( $element['thumbnail_width'] ) ) {
+			$element_width = $element['thumbnail_width'];
+			$element_padding = 10; // px
+			$element_style = sprintf( 'width: %dpx; padding: %dpx;', $element_width, $element_padding );
+		}
 	}
 	else {
 		$element_style = '';
@@ -19,7 +21,7 @@ else :
 
 <div class="easy-instagram-container horizontal">
 <?php foreach ( $easy_instagram_elements as $element ) : ?>
-<div class='easy-instagram-thumbnail-wrapper horizontal' style='<?php echo esc_attr( $element_style );?>'>
+<div class='easy-instagram-thumbnail-wrapper horizontal'  style='<?php echo esc_attr( $element_style );?>'>
 <?php echo $ei_utils->get_thumbnail_html( $element ); ?>
 <?php if ( ! empty( $element['author'] ) ): ?>
 	<div class='easy-instagram-thumbnail-author'>

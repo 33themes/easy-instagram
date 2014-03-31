@@ -58,18 +58,42 @@ class Easy_Instagram_Widget extends WP_Widget {
 		$time_format = ( isset( $instance['time_format'] ) ) ? $instance['time_format'] : $this->defaults['time_format'];
 
 		if ( isset( $instance['thumb_size'] ) ) {
-			list( $w, $h ) = $this->easy_instagram->get_thumb_size_from_params( $instance['thumb_size'] );
-			if ( $w < $this->defaults['min_thumb_size'] || $h < $this->defaults['min_thumb_size'] ) {
-				$thumb_size = $this->defaults['thumb_size'];
-			}
-			else {
-				$thumb_size = trim( $instance['thumb_size'] );
+			
+			if ( 'dynamic_thumbnail' == trim( $instance['thumb_size'] ) ) {
+				$thumb_size = 'dynamic_thumbnail';
+			} else if ( 'dynamic_normal' == trim( $instance['thumb_size'] ) ) {
+				$thumb_size = 'dynamic_normal';
+			} else if ( 'dynamic_large' == trim( $instance['thumb_size'] ) ) {
+				$thumb_size = 'dynamic_large';
+			} else {
+				list( $w, $h ) = $this->easy_instagram->get_thumb_size_from_params( $instance['thumb_size'] );
+				if ( $w < $this->defaults['min_thumb_size'] || $h < $this->defaults['min_thumb_size'] ) {
+					$thumb_size = $this->defaults['thumb_size'];
+				}
+				else {
+					$thumb_size = trim( $instance['thumb_size'] );
+				}
 			}
 		}
 		else {
 			$thumb_size = $this->defaults['thumb_size'];
 		}
 
+		$ajax = ( isset( $instance['ajax'] ) ) ? $instance['ajax'] : $this->defaults['ajax'];
+		
+		$type_options = array(
+			'tag' => __( 'Tag', 'Easy_Instagram' ),
+			'user_id' => __( 'User ID', 'Easy_Instagram' )
+		);
+		
+		$caption_hashtags_options = 
+			$author_fullname_hashtags_options = 
+			$use_ajax_options = 
+			array(
+				'true' => __( 'Yes', 'Easy_Instagram' ),
+				'false' => __( 'No', 'Easy_Instagram' )
+			);
+		
 ?>
 		<p>
 		<label for="<?php echo $this->get_field_id( 'title' ); ?>"><?php _e( 'Title:', 'Easy_Instagram' ); ?></label>
@@ -79,11 +103,9 @@ class Easy_Instagram_Widget extends WP_Widget {
 		<p>
 		<label for="<?php echo $this->get_field_id( 'type' ); ?>"><?php _e( 'Type:', 'Easy_Instagram' ); ?></label>
 		<select class="widefat" id="<?php echo $this->get_field_id( 'type' ); ?>" name="<?php echo $this->get_field_name( 'type' ); ?>">
-			<?php $selected = ( 'tag' == $type ) ? 'selected="selected"' : ''; ?>
-			<option value="tag" <?php echo $selected;?>><?php _e( 'Tag', 'Easy_Instagram' ); ?></option>
-
-			<?php $selected = ( 'user_id' == $type ) ? 'selected="selected"' : ''; ?>
-			<option value="user_id" <?php echo $selected;?>><?php _e( 'User ID', 'Easy_Instagram' ); ?></option>
+			<?php foreach ( $type_options as $option => $label ):
+				printf( '<option value="%s"%s>%s</option>', esc_attr( $option ), selected( $type, $option, false ), esc_html( $label ) );
+			endforeach; ?>
 		</select>
 		</p>
 
@@ -96,16 +118,9 @@ class Easy_Instagram_Widget extends WP_Widget {
 		<p>
 		<label for="<?php echo $this->get_field_id( 'limit' ); ?>"><?php _e( 'Images Count:', 'Easy_Instagram' ); ?></label>
 		<select class="widefat" id="<?php echo $this->get_field_id( 'limit' ); ?>" name="<?php echo $this->get_field_name( 'limit' ); ?>">
-		<?php for ( $i=1; $i<= $this->defaults['max_images']; $i++ ): ?>
-
-		<?php printf(
-			'<option value="%s"%s>%s</option>',
-				$i,
-				selected( $limit, $i, false ),
-				$i );
-		?>
-
-		<?php endfor; ?>
+		<?php for ( $i=1; $i<= $this->defaults['max_images']; $i++ ):
+			printf( '<option value="%s"%s>%s</option>', $i, selected( $limit, $i, false ), $i );
+		endfor; ?>
 		</select>
 		</p>
 
@@ -117,11 +132,9 @@ class Easy_Instagram_Widget extends WP_Widget {
 		<p>
 		<label for="<?php echo $this->get_field_id( 'caption_hashtags' ); ?>"><?php _e( 'Show Caption Hashtags:', 'Easy_Instagram' ); ?></label>
 		<select class="widefat" id="<?php echo $this->get_field_id( 'caption_hashtags' ); ?>" name="<?php echo $this->get_field_name( 'caption_hashtags' ); ?>">
-			<?php $selected = ( 'true' == $caption_hashtags ) ? 'selected="selected"' : ''; ?>
-			<option value="true" <?php echo $selected;?>><?php _e( 'Yes', 'Easy_Instagram' ); ?></option>
-
-			<?php $selected = ( 'false' == $caption_hashtags ) ? 'selected="selected"' : ''; ?>
-			<option value="false" <?php echo $selected;?>><?php _e( 'No', 'Easy_Instagram' ); ?></option>
+			<?php foreach ( $caption_hashtags_options as $option => $label ) :
+				printf( '<option value="%s"%s>%s</option>', esc_attr( $option ), selected( $option, $caption_hashtags, false ), esc_html( $label ) );
+			endforeach; ?>	
 		</select>
 		</p>
 
@@ -138,21 +151,18 @@ class Easy_Instagram_Widget extends WP_Widget {
 		<p>
 		<label for="<?php echo $this->get_field_id( 'author_full_name' ); ?>"><?php _e( 'Show Author\'s Full Name:', 'Easy_Instagram' ); ?></label>
 		<select class="widefat" id="<?php echo $this->get_field_id( 'author_full_name' ); ?>" name="<?php echo $this->get_field_name( 'author_full_name' ); ?>">
-			<?php $selected = ( 'true' == $author_full_name ) ? 'selected="selected"' : ''; ?>
-			<option value="true" <?php echo $selected;?>><?php _e( 'Yes', 'Easy_Instagram' ); ?></option>
-
-			<?php $selected = ( 'false' == $author_full_name ) ? 'selected="selected"' : ''; ?>
-			<option value="false" <?php echo $selected;?>><?php _e( 'No', 'Easy_Instagram' ); ?></option>
+			<?php foreach ( $author_fullname_hashtags_options as $option => $label ) :
+				printf( '<option value="%s"%s>%s</option>', esc_attr( $option), selected( $option, $author_full_name, false), esc_html( $label ) );
+			endforeach; ?>	
 		</select>
 		</p>
 
 		<p>
 		<label for="<?php echo $this->get_field_id( 'thumb_click' ); ?>"><?php _e( 'On Thumbnail Click:', 'Easy_Instagram' ); ?></label>
 		<select class="widefat" id="<?php echo $this->get_field_id( 'thumb_click' ); ?>" name="<?php echo $this->get_field_name( 'thumb_click' ); ?>">
-		<?php foreach ( $this->easy_instagram->get_thumb_click_options() as $key => $value ): ?>
-			<?php $selected = ( $key == $thumb_click ) ? 'selected="selected"' : ''; ?>
-			<option value="<?php echo $key;?>" <?php echo $selected;?>><?php echo $value; ?></option>
-		<?php endforeach; ?>
+		<?php foreach ( $this->easy_instagram->get_thumb_click_options() as $key => $value ):
+			printf( '<option value="%s"%s>%s</option>', esc_attr( $key ), selected( $key, $thumb_click, false ), esc_html( $value ) );
+		endforeach; ?>
 		</select>
 		</p>
 
@@ -171,7 +181,17 @@ class Easy_Instagram_Widget extends WP_Widget {
 		<label for="<?php echo $this->get_field_id( 'template' ); ?>"><?php _e( 'Template:', 'Easy_Instagram' ); ?></label>
 		<input type='text' class="widefat" id="<?php echo $this->get_field_id( 'template' ); ?>" name="<?php echo $this->get_field_name( 'template' ); ?>" value="<?php _e( $template ); ?> " />
 		<span class='ei-field-info'><?php _e( 'See Easy Instagram help for details.', 'Easy_Instagram' ); ?></span>
-		</p>		
+		</p>
+		
+		<p>
+		<label for="<?php echo $this->get_field_id( 'ajax' ); ?>"><?php _e( 'Use AJAX:', 'Easy_Instagram' ); ?></label>
+		<select class="widefat" id="<?php echo $this->get_field_id( 'ajax' ); ?>" name="<?php echo $this->get_field_name( 'ajax' ); ?>">
+			<?php foreach ( $use_ajax_options as $option => $label ) :
+				printf( '<option value="%s"%s>%s</option>', esc_attr( $option ), selected( $option, $ajax, false ), esc_html( $label ) );
+			endforeach; ?>
+		</select>
+		</p>
+		
 <?php
 
 	}
@@ -193,6 +213,7 @@ class Easy_Instagram_Widget extends WP_Widget {
 		$instance['time_format']		= strip_tags( $new_instance['time_format'] );
 		$instance['thumb_size']			= strip_tags( $new_instance['thumb_size'] );
 		$instance['template']			= trim( strip_tags( $new_instance['template'] ) );
+		$instance['ajax']				= trim( strip_tags( $new_instance['ajax'] ) );
 		return $instance;
 	}
 
@@ -215,6 +236,7 @@ class Easy_Instagram_Widget extends WP_Widget {
 		$time_format = $this->defaults['time_format'];
 		$thumb_size = $this->defaults['thumb_size'];
 		$template = $this->defaults['template'];
+		$ajax = $this->defaults['ajax'];		
 
 		if ( 'tag' == $instance['type'] ) {
 			$tag = trim( $instance['value'] );
@@ -268,6 +290,11 @@ class Easy_Instagram_Widget extends WP_Widget {
 			$template = $instance['template'];
 		}
 
+		if ( isset( $instance['ajax'] ) ) {
+			$ajax = $instance['ajax'];
+		}
+
+
 		$params = array(
 			'tag'				 => $tag,
 			'user_id'			 => $user_id,
@@ -281,6 +308,7 @@ class Easy_Instagram_Widget extends WP_Widget {
 			'time_format'		 => $time_format,
 			'thumb_size'		 => $thumb_size,
 			'template'			 => $template,
+			'ajax'               => $ajax
 		);
 
 		$content = $this->easy_instagram->generate_content( $params );

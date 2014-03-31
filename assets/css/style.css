@@ -21,12 +21,23 @@
 .easy-instagram-thumbnail-wrapper {
 	position: relative;
 	overflow: hidden;
+	text-align: center;
 }
 
 .easy-instagram-thumbnail-wrapper.horizontal {
 	float: left;
 	margin: 10px 0 0 20px;
+	width: 33%;
+	height: auto;
 }
+
+.easy-instagram-thumbnail-wrapper a {
+	max-width: 100%
+	}
+
+.easy-instagram-thumbnail-wrapper img {
+	max-width: 100%
+	}
 
 .clear {
 	clear: both;
@@ -41,8 +52,7 @@ a.easy-instagram-original,
 a.thickbox.video,
 a.colorbox-video {
 	position: relative;
-	display: block;
-	width: 100%;
+	display: inline-block;
 	height: 100%;
 }
 	
@@ -51,6 +61,10 @@ a.colorbox-video {
 	margin: 0;
 	padding: 0;
 	position: absolute;
+	top: 38%;
+	left: 38%;
+	width: 25%;
+	height: 25%;
 }
 
 .easy-instagram-container.grid {
