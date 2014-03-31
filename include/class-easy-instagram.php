@@ -688,7 +688,6 @@ class Easy_Instagram {
 	//================================================================
 	
 	private function _get_render_elements_no_ajax( $args ) {
-		error_log(print_r($args,1));
 		extract( $args );
 		
 		$access_token = $this->get_access_token();
