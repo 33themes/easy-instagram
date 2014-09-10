@@ -711,9 +711,32 @@ class Easy_Instagram {
 				$endpoint_type = 'tag';
 			}
 		}
-		
+
+
+		if (strpos($endpoint_id,',') !== false) {
+			$endpoint_ids = preg_split('/,\s*/',$endpoint_id);
+		}
+		else {
+			$endpoint_ids = array($endpoint_id);
+		}
+
+		unset($instagram_elements);
 		$error = '';
-		$instagram_elements = $this->_get_data_for_user_or_tag( $instagram, $endpoint_id, $limit, $endpoint_type, $error );
+		foreach( $endpoint_ids as $endpoint_id) {
+			$_instagram_elements = $this->_get_data_for_user_or_tag( $instagram, $endpoint_id, $limit, $endpoint_type, $error );
+			foreach( $_instagram_elements as $element) {
+				$create_time = (int) $element['created_time'];
+				if (isset($instagram_elements[$create_time]))
+					$instagram_elements[ $create_time+1 ] = $element;
+				else
+					$instagram_elements[ $create_time ] = $element;
+			}
+		}
+
+		krsort($instagram_elements);
+		$args['limit'] = count($instagram_elements);
+
+		$error = '';
 		if ( is_null( $instagram_elements ) ) {
 			$rendered = $error;
 		}
