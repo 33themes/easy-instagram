@@ -689,7 +689,7 @@ class Easy_Instagram {
 	
 	private function _get_render_elements_no_ajax( $args ) {
 		extract( $args );
-		
+
 		$access_token = $this->get_access_token();
 		if ( empty( $access_token ) ) {
 			$rendered = __( 'Invalid access token. Please check your Instagram settings', 'Easy_Instagram' );
@@ -703,40 +703,44 @@ class Easy_Instagram {
 		//Select which Instagram endpoint to use
 		if ( ! empty( $user_id ) ) {
 			$endpoint_id = $user_id;
-			$endpoint_type = 'user';
+            $endpoint_type = 'user';
 		}
 		else {
 			if ( ! empty( $tag ) ) {
 				$endpoint_id = $tag;
 				$endpoint_type = 'tag';
 			}
-		}
+        }
+        
+        if (strpos($endpoint_id,',') !== false) {
+            $endpoint_ids = preg_split('/,\s*/',$endpoint_id);
+        }
+        else {
+            $endpoint_ids = array($endpoint_id);
+        }
 
+        unset($instagram_elements);
+        $error = '';
+        foreach( $endpoint_ids as $endpoint_id) {
+            $_instagram_elements = $this->_get_data_for_user_or_tag( $instagram, $endpoint_id, $limit, $endpoint_type, $error );
+            $author = json_decode( $instagram->getUser($endpoint_id) );
+            foreach( $_instagram_elements as $element) {
+                $element['author'] = $author->data;
+                $likes = json_decode( $instagram->getLikes( $element['id'] ) );
+                $element['likes'] = count( $likes->data );
+                $create_time = (int) $element['created_time'];
+                if (isset($instagram_elements[$create_time]))
+                    $instagram_elements[ $create_time+1 ] = $element;
+                else
+                    $instagram_elements[ $create_time ] = $element;
+            }
+        }
 
-		if (strpos($endpoint_id,',') !== false) {
-			$endpoint_ids = preg_split('/,\s*/',$endpoint_id);
-		}
-		else {
-			$endpoint_ids = array($endpoint_id);
-		}
+        krsort($instagram_elements);
+        $args['limit'] = count($instagram_elements);
 
-		unset($instagram_elements);
-		$error = '';
-		foreach( $endpoint_ids as $endpoint_id) {
-			$_instagram_elements = $this->_get_data_for_user_or_tag( $instagram, $endpoint_id, $limit, $endpoint_type, $error );
-			foreach( $_instagram_elements as $element) {
-				$create_time = (int) $element['created_time'];
-				if (isset($instagram_elements[$create_time]))
-					$instagram_elements[ $create_time+1 ] = $element;
-				else
-					$instagram_elements[ $create_time ] = $element;
-			}
-		}
+        // var_dump($instagram_elements);
 
-		krsort($instagram_elements);
-		$args['limit'] = count($instagram_elements);
-
-		$error = '';
 		if ( is_null( $instagram_elements ) ) {
 			$rendered = $error;
 		}
@@ -763,14 +767,17 @@ class Easy_Instagram {
 
 		list( $thumb_w, $thumb_h ) = $this->get_thumb_size_from_params( $thumb_size );
 
-		$utils = new Easy_Instagram_Utils();
+        $utils = new Easy_Instagram_Utils();
+
 
 		$template_elements = array();
 
 		$crt = 0;
 		foreach ( $instagram_elements as $elem ) {
-			$current_template_element = array();
-			
+            $current_template_element = array();
+
+            $current_template_element['_link'] = $elem['link'];
+
 			$large_image_url = $elem['standard_resolution']['url'];
 			$normal_image_url = $elem['low_resolution']['url'];
 			$thumbnail_url = $elem['thumbnail']['url'];
@@ -868,6 +875,7 @@ class Easy_Instagram {
 				$current_template_element['dynamic_thumb'] = $dynamic_thumb;
 			}
 			
+
 			if ( empty( $elem['caption_from'] ) ) {
 				$current_template_element['author'] = '';
 			}
@@ -885,6 +893,8 @@ class Easy_Instagram {
 
 				$current_template_element['author'] = $published_by;
 			}
+			$current_template_element['_author'] = $elem['author'];
+			$current_template_element['_likes'] = $elem['likes'];
 
 			if ( $caption_char_limit > 0 ) {
 				$current_template_element['thumbnail_caption'] = $caption_text;
@@ -985,7 +995,6 @@ class Easy_Instagram {
 		if ( empty( $access_token ) ) {
 			return '';
 		}
-		
 		if ( $ajax ) {
 			return $this->_get_render_elements_for_ajax( $params );	
 		}
