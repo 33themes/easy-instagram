@@ -55,8 +55,8 @@ class Easy_Instagram_Cache {
 	//=================================================================
 
 	// Returns the cached data and a flag telling if the data expired
-	function get_cached_data_for_user_or_tag( $id_or_tag, $limit, $type = 'tag' ) {
-		$hash = md5( $type . $id_or_tag );
+	function get_cached_data_for_user_or_tag( $id_or_tag, $limit, $type = 'tag', $min_timestamp, $max_timestamp  ) {
+		$hash = md5( $type . $id_or_tag . $min_timestamp . $max_timestamp );
 		$path = $this->get_cache_dir() . $hash . '.cache';
 
 		$cached_data = $this->_get_cache_file_content( $path );
