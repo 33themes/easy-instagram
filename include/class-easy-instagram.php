@@ -592,7 +592,7 @@ class Easy_Instagram {
             return $content;
 
 		$content = $this->generate_content( $params );
-        set_transient( $key, $content, ($this->cache->get_refresh_minutes()*60) -1 );
+        set_transient( $key, $content, ($this->cache->get_refresh_minutes()*60) - 2*60 );
 
         return $content;
 

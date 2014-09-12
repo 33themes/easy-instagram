@@ -382,14 +382,14 @@ class Easy_Instagram_Cache {
 
 	//=========================================================================
 
-	function cache_live_data( $live_data, $endpoint_id, $endpoint_type, $limit ) {
+	function cache_live_data( $live_data, $endpoint_id, $endpoint_type, $limit, $min_timestamp, $max_timestamp ) {
 		$cache_data = array( 
 			'cache_timestamp' => time(),
 			'requested_count' => $limit,
 			'data' => array()
 		);
 		
-		$unique_rel = md5( $endpoint_type . $endpoint_id );
+		$unique_rel = md5( $endpoint_type . $endpoint_id . $min_timestamp . $max_timestamp );
 		$utils = new Easy_Instagram_Utils();
 		
 		foreach ( $live_data as $elem ) {
@@ -451,7 +451,7 @@ class Easy_Instagram_Cache {
 			$cache_data['data'][] = $cached_elem;
 		}
 
-		$this->_cache_data( $cache_data, $endpoint_id, $endpoint_type );
+		$this->_cache_data( $cache_data, $unique_rel, $endpoint_type );
 		return $cache_data;
 	}
 
