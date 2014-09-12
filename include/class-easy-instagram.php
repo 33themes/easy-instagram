@@ -582,9 +582,20 @@ class Easy_Instagram {
             'min_timestamp'     => $min_timestamp,
             'max_timestamp'     => $max_timestamp,
 			'ajax'              => $ajax
-		);
+        );
 
-		return $this->generate_content( $params );
+        ksort($params);
+
+        $key = md5( serialize($params)  . NONCE_KEY );
+
+        if ( ( $content = get_transient($key) ) === false ) 
+            return $content;
+
+		$content = $this->generate_content( $params );
+        set_transient( $key, $this->generate_content, HOUR_IN_SECONDS );
+
+        return $content;
+
 	}
 
 	//================================================================
