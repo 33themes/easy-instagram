@@ -588,11 +588,11 @@ class Easy_Instagram {
 
         $key = md5( serialize($params)  . NONCE_KEY );
 
-        if ( ( $content = get_transient($key) ) === false ) 
+        if ( ( $content = get_transient($key) ) !== false ) 
             return $content;
 
 		$content = $this->generate_content( $params );
-        set_transient( $key, $this->generate_content, HOUR_IN_SECONDS );
+        set_transient( $key, $content, HOUR_IN_SECONDS );
 
         return $content;
 
