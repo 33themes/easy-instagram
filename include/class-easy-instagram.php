@@ -606,7 +606,7 @@ class Easy_Instagram {
 		}
 
 		// Get cached data if available. Get live data if no cached data found.
-		list( $data, $expired ) = $this->cache->get_cached_data_for_user_or_tag( $endpoint_id, $limit, $endpoint_type, $min_timestamp, $max_timestamp );
+		// list( $data, $expired ) = $this->cache->get_cached_data_for_user_or_tag( $endpoint_id, $limit, $endpoint_type, $min_timestamp, $max_timestamp );
 
 		$live_data = null;
 		if ( $expired || ( is_null( $data ) ) ) {
@@ -734,6 +734,10 @@ class Easy_Instagram {
             $endpoint_ids = array($endpoint_id);
         }
 
+        foreach($endpoint_ids as $_key => $endpoint_id) {
+            if ( empty(trim($endpoint_id))) unset($endpoint_ids[$_key]);
+        }
+
         $base_limit = floor( $limit/count($endpoint_ids) );
         $total_limit = 0;
 
@@ -744,12 +748,12 @@ class Easy_Instagram {
 
             $count++;
             $_limit = $base_limit;
-
+            $total_limit += $_limit;
+            
             if ($count >= count($endpoint_ids)) {
                 if ( $total_limit < $limit ) $_limit = $base_limit  + $limit - $total_limit;
             }
 
-            $total_limit += $_limit;
 
             $_instagram_elements = $this->_get_data_for_user_or_tag( $instagram, $endpoint_id, $_limit, $endpoint_type, $error, $min_timestamp, $max_timestamp );
             $author = json_decode( $instagram->getUser($endpoint_id) );
