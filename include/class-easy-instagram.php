@@ -734,10 +734,24 @@ class Easy_Instagram {
             $endpoint_ids = array($endpoint_id);
         }
 
+        $base_limit = floor( $limit/count($endpoint_ids) );
+        $total_limit = 0;
+
         unset($instagram_elements);
         $error = '';
+        $count = 0;
         foreach( $endpoint_ids as $endpoint_id) {
-            $_instagram_elements = $this->_get_data_for_user_or_tag( $instagram, $endpoint_id, $limit, $endpoint_type, $error, $min_timestamp, $max_timestamp );
+
+            $count++;
+            $_limit = $base_limit;
+
+            if ($count >= count($endpoint_ids)) {
+                if ( $total_limit < $limit ) $_limit = $base_limit  + $limit - $total_limit;
+            }
+
+            $total_limit += $_limit;
+
+            $_instagram_elements = $this->_get_data_for_user_or_tag( $instagram, $endpoint_id, $_limit, $endpoint_type, $error, $min_timestamp, $max_timestamp );
             $author = json_decode( $instagram->getUser($endpoint_id) );
             foreach( $_instagram_elements as $element) {
                 $element['author'] = $author->data;
