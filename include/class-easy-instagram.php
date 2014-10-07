@@ -588,8 +588,9 @@ class Easy_Instagram {
 
         $key = md5( serialize($params)  . NONCE_KEY );
 
-        if ( ( $content = get_transient($key) ) !== false ) 
-            return $content;
+        if (!isset($_REQUEST['instagram-no-cache']))
+            if ( ( $content = get_transient($key) ) !== false ) 
+                return $content;
 
 		$content = $this->generate_content( $params );
         set_transient( $key, $content, ($this->cache->get_refresh_minutes()*60) - 2*60 );
